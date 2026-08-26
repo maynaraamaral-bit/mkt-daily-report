@@ -1,0 +1,96 @@
+{
+  "source": "clickup_live_mcp_pull",
+  "as_of": "2026-07-28",
+  "trend_cutoff": "2026-07-27 23:59:59 America/Phoenix",
+  "lists": ["Incident Support | Go-Live", "Hyvä Backlog"],
+  "columns": [
+    {
+      "key": "in_progress", "label": "Em andamento", "icon": "play", "color": "green",
+      "tasks": [
+        {"title": "Functionalities Analitycs", "trend": "same"},
+        {"title": "Avatax Implementation in Magento", "trend": "same"},
+        {"title": "Contact Removal from Magento When Removed from Netsuite", "trend": "same"},
+        {"title": "Billing and Legal Address Unbundling in NetSuite", "trend": "same"},
+        {"title": "Tooltips and Placeholders must be Fixed", "trend": "same"},
+        {"title": "Oauth2.0 Expiration", "trend": "same"},
+        {"title": "Only admins can see orders", "trend": "same"},
+        {"title": "Improve customer fallback to map \"Is JEM Website Customer\" = false", "trend": "same"},
+        {"title": "Delete Products on Magento", "trend": "same"},
+        {"title": "Validate Contact Flows for Specific Scenarios", "trend": "same"},
+        {"title": "Create Dashboard for Sales Rep", "trend": "same"},
+        {"title": "Price Spy", "trend": "same"},
+        {"title": "Transactional Email Layout Fixing - Invoice and Reset Password Confirmation", "trend": "same"},
+        {"title": "Password Setup Warning - My Account", "trend": "same"},
+        {"title": "Contact merge in Netsuite", "trend": "same"},
+        {"title": "Enable Mexico clients in Magento", "trend": "same"},
+        {"title": "BUG - Solupay não encontra Invoices ativas no NetSuite", "trend": "same"},
+        {"title": "Multi-Shipping - Checkout", "trend": "same"},
+        {"title": "HEADER - Ajustar header no responsivo - JEM UK", "trend": "same"},
+        {"title": "Criação de ambiente de Pré-Produção - UAT", "trend": "same"},
+        {"title": "Integração de Ferramentas MKT - Hubspot e Ferramentas", "trend": "same"},
+        {"title": "ESD Farenhyt Magento", "trend": "same"},
+        {"title": "Sales Rep Assignment Issues", "trend": "same"},
+        {"title": "Shipping Rules - Hazmat & Not Free Shippable", "trend": "same"},
+        {"title": "Will Call (Customer Pick Up)", "trend": "same"},
+        {"title": "Final Customer Address Logic", "trend": "same"},
+        {"title": "Integração Bidirecional de Addresses (Magento <-> NetSuite)", "trend": "same"},
+        {"title": "Search Space Bug", "trend": "same"},
+        {"title": "BIM Hero Banner - JEM UK", "trend": "same"},
+        {"title": "PR CI/CD", "trend": "same"},
+        {"title": "Integração de Sales Orders de Smarts (Magento)", "trend": "same"},
+        {"title": "Sync Customer Inactivation: NetSuite → Magento", "trend": "same"},
+        {"title": "Shipping Address Updates (Checkout & Address Book)", "trend": "same"},
+        {"title": "Enable WebP Image Support", "trend": "same"},
+        {"title": "Field Preparing Package without information", "trend": "same"},
+        {"title": "Mandatory fields for Company and Contacts accounts in NetSuite", "trend": "same"},
+        {"title": "Order List - Status Normalization Between Magento and NetSuite", "trend": "same"},
+        {"title": "Magento GTM - Add to Cart event not pushed to Data Layer", "trend": "same"},
+        {"title": "Add \"Technical Data\" Table to Product Pages (PDP) - JEM UK", "trend": "same"},
+        {"title": "Correção de URLs das Samples de Projetos - LP All Services", "trend": "same"}
+      ]
+    },
+    {
+      "key": "ready_stg", "label": "Prontas para validação (STG)", "icon": "clock", "color": "blue",
+      "tasks": [
+        {"title": "Update Shopping Cart Automatically", "trend": "up"},
+        {"title": "Fallback and Notification - IF and Invoice", "trend": "down"},
+        {"title": "CT01 - PLANO DE TESTES", "trend": "same"}
+      ]
+    },
+    {
+      "key": "awaiting_deploy", "label": "Tarefas aguardando Deploy", "icon": "rocket", "color": "purple",
+      "tasks": [
+        {"title": "[JEM-Hyva] Integração do atributo Bulk Pack (NetSuite → Magento) para controle de exibição", "trend": "same"}
+      ]
+    },
+    {
+      "key": "ready_prd", "label": "Tarefas prontas para validação (PRD)", "icon": "clipboard", "color": "orange",
+      "tasks": [
+        {"title": "Dashboard IF & Invoice", "trend": "same"},
+        {"title": "Dashboard Credit Limit - Dados", "trend": "down"}
+      ]
+    },
+    {
+      "key": "done_prd", "label": "Conclusões mais recentes (PRD)", "icon": "trophy", "color": "gold",
+      "tasks": [
+        {"title": "[LP] | Training Fiplex + PCTEL", "completed_at": "2026-07-27 11:06"},
+        {"title": "Ajuste de Configuração dos Filtros na PLP de Brands", "completed_at": "2026-07-24 16:21"},
+        {"title": "Add \"Technical Data\" Table to Product Pages (PDP) - JEM CA", "completed_at": "2026-07-24 15:40"},
+        {"title": "Criação e Remoção automática da Brand no Magento", "completed_at": "2026-07-21 16:51"},
+        {"title": "Tracking Number error", "completed_at": "2026-07-21 16:49"},
+        {"title": "PO# as Mandatory Field - Checkout & NetSuite", "completed_at": "2026-07-20 16:17"},
+        {"title": "Research error contact update", "completed_at": "2026-07-17 18:02"},
+        {"title": "Patch de Segurança (APSB26-73)", "completed_at": "2026-07-16 16:08"},
+        {"title": "Child Contact without Phone Number", "completed_at": "2026-07-13 18:14"},
+        {"title": "[LP - NICET + FIPLEX] - JEM US", "completed_at": "2026-07-07 18:41"}
+      ]
+    }
+  ],
+  "pipeline": [
+    {"step": 1, "icon": "play", "label": "Tarefa em andamento (início)"},
+    {"step": 2, "icon": "flask", "label": "Validação em ambiente de testes (STG)"},
+    {"step": 3, "icon": "rocket", "label": "Publicação da tarefa em PRD (Deploy)"},
+    {"step": 4, "icon": "clipboard", "label": "Testes finais em ambiente real (PRD)"},
+    {"step": 5, "icon": "trophy", "label": "Conclusão da tarefa (etapa final)"}
+  ]
+}

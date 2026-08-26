@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node dump.mjs)",
+      "Bash(node _h.mjs)",
+      "Bash(node test_board.mjs)",
+      "Bash(PYTHONIOENCODING=utf-8 python task_log.py 868ggetw0 --cutoff 2026-07-26)",
+      "Bash(python -m py_compile clickup_client.py build_data.py task_log.py probe_clickup_view.py serve.py)",
+      "Bash(node -e ' *)",
+      "Bash(netstat -ano)",
+      "Bash(echo \"---exit $?\")",
+      "Bash(grep -nE \"#[0-9a-fA-F]{3,6}\")",
+      "PowerShell(Start-Process \"http://127.0.0.1:8790/index.html\")",
+      "Bash(PYTHONIOENCODING=utf-8 python run_manifest.py)",
+      "Bash(node test_portal.mjs)",
+      "Bash(grep -rn -A12 '```rest' --include=\"*.md\" .)",
+      "Bash(python \"C:/Users/MAYNAR~2/AppData/Local/Temp/claude/C--Claude-nsaw-dash-migration-JEM-Marketing-Daily-Report/3646247d-9242-4b30-9567-eaeaf2f9a103/scratchpad/probe_timing.py\")",
+      "Bash(sed -i 's/| 84-assertion harness for the portal version/| 91-assertion harness for the portal version/' CLAUDE.md)",
+      "Bash(sed -i 's/status + bolinha no cartão\\): \\\\*\\\\*84 asserções, 0 falhas\\\\*\\\\*/status + bolinha no cartão\\): **91 asserções, 0 falhas**/' CLAUDE.md)",
+      "Bash(sed -i 's/## Baseline esperado: 84 asserções, 0 falhas/## Baseline esperado: 91 asserções, 0 falhas/' portal_test/README.md)",
+      "Bash(PYTHONIOENCODING=utf-8 python make_fixtures.py)",
+      "PowerShell(try { $r = Invoke-WebRequest -Uri \"http://127.0.0.1:8790/index.html\" -UseBasicParsing -TimeoutSec 5; Write-Output \"previa: HTTP $\\($r.StatusCode\\) - $\\($r.RawContentLength\\) bytes\"; $b = Invoke-WebRequest -Uri \"http://127.0.0.1:8790/data/board_baseline.json\" -UseBasicParsing -TimeoutSec 5; Write-Output \"base de ontem servida: HTTP $\\($b.StatusCode\\)\" } catch { Write-Output \"ERRO: $\\($_.Exception.Message\\)\" })",
+      "Bash(python -c ' *)"
+    ]
+  }
+}

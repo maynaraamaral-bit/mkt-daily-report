@@ -1,0 +1,20 @@
+{
+  "2026-07-28": {
+    "companies_first_purchase_count": 416,
+    "companies_total": 2993,
+    "contacts_total": 12035,
+    "pct_first_purchase": 13.9
+  },
+  "2026-07-29": {
+    "companies_first_purchase_count": 417,
+    "companies_total": 2998,
+    "contacts_total": 12066,
+    "pct_first_purchase": 13.91
+  },
+  "2026-08-24": {
+    "companies_first_purchase_count": 448,
+    "companies_total": 3024,
+    "contacts_total": 12240,
+    "pct_first_purchase": 14.81
+  }
+}

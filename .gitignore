@@ -1,0 +1,333 @@
+# ==============================================================================
+# .gitignore — Projeto Free Shipping (Dashboard & Análise de Dados)
+# Stack: Node (build/dashboard) + Python (Streamlit / scripts de processamento)
+#
+# PRINCÍPIOS:
+#   1. NENHUM dado corporativo, credencial ou artefato local entra no Git.
+#   2. TODO .py, .html e .md é versionado, sempre, em qualquer pasta.
+#      -> garantido pela seção 12 no final do arquivo.
+#      -> não há blindagem por segurança: nenhum script é ignorado por nome.
+#      -> limitação do Git: dentro de node_modules/, venv/, __pycache__/,
+#         dist/ e build/ nada é reincluído (o diretório-pai está excluído).
+#   3. Planilhas, imagens, PDFs, dumps, logs e credenciais ficam de fora.
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. DEPENDÊNCIAS — Node
+# ------------------------------------------------------------------------------
+node_modules/
+jspm_packages/
+bower_components/
+.pnpm-store/
+.yarn/cache/
+.yarn/unplugged/
+.yarn/install-state.gz
+.npm/
+.node_repl_history
+*.tgz
+
+# ------------------------------------------------------------------------------
+# 2. DEPENDÊNCIAS — Python (ambientes virtuais)
+# ------------------------------------------------------------------------------
+venv/
+.venv/
+env/
+.env/
+ENV/
+virtualenv/
+.python-version
+.conda/
+conda-env/
+.poetry/
+__pypackages__/
+
+# Bytecode e build Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+build/
+dist/
+develop-eggs/
+eggs/
+.eggs/
+lib64/
+parts/
+sdist/
+wheels/
+*.egg-info/
+*.egg
+.installed.cfg
+
+# Caches de ferramentas Python
+.pytest_cache/
+.mypy_cache/
+.dmypy.json
+.ruff_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.cover
+.hypothesis/
+.ipynb_checkpoints/
+
+# ------------------------------------------------------------------------------
+# 3. CREDENCIAIS E SEGREDOS  ⚠️ NUNCA COMMITAR
+# ------------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+!.env.template
+*.env
+service-account*.json
+client_secret*.json
+token.json
+token.pickle
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+*.keystore
+.netrc
+.pgpass
+.htpasswd
+.streamlit/secrets.toml
+.aws/
+.gcloud/
+*.secret
+
+# ------------------------------------------------------------------------------
+# 4. ARQUIVOS DE DADOS  ⚠️ Relatórios de vendas e planilhas internas
+#    Bloqueio por EXTENSÃO (vale em qualquer pasta do projeto).
+#    Para versionar um arquivo de exemplo/anonimizado:
+#        git add -f caminho/exemplo.csv
+# ------------------------------------------------------------------------------
+# Planilhas
+*.xlsx
+*.xlsm
+*.xlsb
+*.xltx
+*.xltm
+*.xls
+*.ods
+
+# Texto delimitado
+*.csv
+*.tsv
+*.psv
+
+# Colunar / binário analítico
+*.parquet
+*.pq
+*.orc
+*.avro
+*.feather
+*.arrow
+*.h5
+*.hdf5
+*.pkl
+*.pickle
+*.npy
+*.npz
+*.sav
+*.dta
+
+# Bancos locais e dumps
+*.db
+*.sqlite
+*.sqlite3
+*.duckdb
+*.mdb
+*.accdb
+*.sql
+*.dump
+*.bak
+
+# Documentos internos finalizados (Office / PDF)
+*.docx
+*.doc
+*.pptx
+*.ppt
+*.pdf
+~$*
+!docs/**/*.pdf
+
+# ------------------------------------------------------------------------------
+# 5. IMAGENS, PRINTS E MÍDIA
+# ------------------------------------------------------------------------------
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.tif
+*.tiff
+*.webp
+*.heic
+*.ico
+*.psd
+*.ai
+*.mp4
+*.mov
+*.avi
+*.webm
+
+# Exceções: assets essenciais da UI do dashboard (descomente o que precisar)
+# !assets/logo.svg
+# !assets/favicon.ico
+# !docs/img/**
+
+# ------------------------------------------------------------------------------
+# 6. LOGS
+# ------------------------------------------------------------------------------
+*.log
+*.log.*
+logs/
+log/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+.pnpm-debug.log*
+pip-log.txt
+pip-delete-this-directory.txt
+*.out
+*.err
+nohup.out
+
+# ------------------------------------------------------------------------------
+# 7. IDE / EDITORES
+# ------------------------------------------------------------------------------
+.vscode/
+!.vscode/extensions.json
+.idea/
+*.iml
+*.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
+.spyderproject
+.spyproject
+.ropeproject
+.history/
+*.code-workspace
+
+# ------------------------------------------------------------------------------
+# 8. SISTEMA OPERACIONAL
+# ------------------------------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+.AppleDouble
+.LSOverride
+Icon?
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+*.stackdump
+
+# ------------------------------------------------------------------------------
+# 9. FRAMEWORKS DE DASHBOARD / BUILD
+# ------------------------------------------------------------------------------
+.streamlit/cache/
+.gradio/
+.dash_cache/
+.jupyter/
+.next/
+.nuxt/
+.svelte-kit/
+.astro/
+.vite/
+.parcel-cache/
+.turbo/
+.cache/
+.temp/
+.tmp/
+storybook-static/
+.vercel/
+.netlify/
+
+# ------------------------------------------------------------------------------
+# 10. ORQUESTRAÇÃO / DATA TOOLING
+# ------------------------------------------------------------------------------
+target/
+dbt_packages/
+dbt_modules/
+.dbt/
+.great_expectations/uncommitted/
+airflow.db
+airflow.cfg
+.dvc/cache/
+mlruns/
+.metaflow/
+
+# ------------------------------------------------------------------------------
+# 11. DIVERSOS
+# ------------------------------------------------------------------------------
+*.tmp
+*.temp
+*.old
+*.orig
+*.rej
+*.zip
+*.rar
+*.7z
+*.tar
+*.tar.gz
+*.iso
+.terraform/
+*.tfstate
+*.tfstate.*
+_to_delete/
+
+# ==============================================================================
+# 12. CÓDIGO-FONTE — SEMPRE VERSIONADO  ✅  (REGRA INEGOCIÁVEL)
+#     .py / .html / .md entram no Git em qualquer pasta do projeto, sem exceção
+#     e sem filtro de segurança. Estas regras são as últimas do arquivo e por
+#     isso vencem TODOS os padrões acima.
+#     Se um script tiver chave ou senha em código, resolva no código (mova para
+#     .env), não no .gitignore.
+# ==============================================================================
+!*.py
+!*.html
+!*.htm
+!*.md
+!**/*.py
+!**/*.html
+!**/*.htm
+!**/*.md
+
+# Complementos de código que também nunca devem ser ignorados
+!*.ipynb
+!*.js
+!*.jsx
+!*.ts
+!*.tsx
+!*.css
+!*.scss
+!*.toml
+!*.yml
+!*.yaml
+!requirements*.txt
+!package.json
+!package-lock.json
+!pnpm-lock.yaml
+!yarn.lock
+!Pipfile
+!Pipfile.lock
+!pyproject.toml
+!README*
+!LICENSE*
+!.gitignore

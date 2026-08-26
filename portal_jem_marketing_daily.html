@@ -1,0 +1,1169 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>JEM Marketing Daily Report</title>
+<style>
+  :root{
+    /* site/company identity = teal ; orders & counts = blue ; money = green ;
+       highlight = gold ; kanban stages = green/blue/purple/orange/gold */
+    --teal:#0f6e72;   --teal-dk:#0b565a;  --teal-bg:#e6f3f3;
+    --blue:#2a78d6;   --blue-dk:#1c5cab;  --blue-bg:#eaf2fc;
+    --green:#0ca30c;  --green-dk:#087a08; --green-bg:#eaf5e2;
+    --gold:#eda100;   --gold-dk:#c98500;  --gold-bg:#fdf3e0;
+    --orange:#eb6834; --orange-dk:#c94e1e;--orange-bg:#fdece3;
+    --purple:#4a3aa7; --purple-dk:#3a2d85;--purple-bg:#ece9f8;
+    --red:#d03b3b;    --red-dk:#a92e2e;   --red-bg:#fbe9e9;
+    /* warm paper tones instead of white -- easier on the eyes for a daily-read report */
+    --ink:#26251f; --muted:#7d7a6e; --line:#e5e0d5; --bg:#f4f1e9; --card:#fffdf8;
+    --panel:#faf7f0;   /* barra de filtros */
+    --card2:#fcfaf3;   /* cartão do kanban */
+    --grid:#ece7db;    /* linhas de grade dos gráficos */
+    --teal-ln:#cfe3e3; /* bordas da barra de filtro do quadro */
+    --shadow:0 1px 2px rgba(16,40,46,.06),0 2px 8px rgba(16,40,46,.05);
+  }
+  /* ---- tema escuro: só troca tokens, nenhuma regra de layout muda ----
+     Os `-dk` são usados como COR DE TEXTO (rótulo do gráfico, delta, hl-lbl), então no
+     escuro eles precisam clarear, não escurecer; e os `-bg` (tintas pastel) viram tintas
+     escuras. Os gráficos leem `var(--teal)`/`var(--card)` direto no atributo SVG, então
+     acompanham a troca sem redesenhar. */
+  :root[data-theme="dark"]{
+    --teal:#2aa7ad;   --teal-dk:#7fd7db;  --teal-bg:#10312f;
+    --blue:#4a90e2;   --blue-dk:#9cc7f5;  --blue-bg:#152436;
+    --green:#2fb344;  --green-dk:#86e39a; --green-bg:#122a17;
+    --gold:#e0a72a;   --gold-dk:#f5d68a;  --gold-bg:#31260f;
+    --orange:#ef7a4a; --orange-dk:#f7b295;--orange-bg:#33190f;
+    --purple:#7d6ee0; --purple-dk:#b9aef5;--purple-bg:#1d1836;
+    --red:#e05555;    --red-dk:#f3a0a0;   --red-bg:#331414;
+    --ink:#e9e7e1; --muted:#9b978c; --line:#33322d; --bg:#100f0e; --card:#1a1917;
+    --panel:#171614; --card2:#201f1c; --grid:#2b2a26; --teal-ln:#1e4a4c;
+    --shadow:0 1px 2px rgba(0,0,0,.5),0 2px 10px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;font-size:13px;line-height:1.4}
+  header{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;
+    padding:12px 18px;background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20}
+  header h1{font-size:16px;margin:0;font-weight:700}
+  header .meta{font-size:12px;color:var(--muted)}
+  .rgroup{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .chip{padding:6px 11px;border:1px solid var(--line);background:var(--card);border-radius:7px;font-size:12px;cursor:pointer;color:var(--ink)}
+  .chip:hover{border-color:var(--teal);color:var(--teal-dk)}
+  .chip.active{background:var(--teal);border-color:var(--teal);color:#fff;font-weight:700}
+  /* source status pills */
+  .src{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);
+    border:1px solid var(--line);border-radius:20px;padding:3px 9px;white-space:nowrap}
+  .src .dot{width:7px;height:7px;border-radius:50%;background:var(--muted);flex:none}
+  .src.ok .dot{background:var(--green)} .src.err .dot{background:var(--red)} .src.empty .dot{background:var(--gold)}
+  .src.err{color:var(--red-dk);border-color:#f0cfcf} .src.empty{color:var(--gold-dk);border-color:#f0e0bd}
+  .filters{display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;padding:10px 18px;background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:49px;z-index:19}
+  .filters label{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--teal-dk);font-weight:800}
+  .filters input[type=date]{padding:5px 8px;border:1px solid var(--line);border-radius:7px;font-size:12px}
+  .sep{width:1px;height:20px;background:var(--line);margin:0 4px}
+  main{padding:14px}
+  .tiles{display:grid;grid-template-columns:repeat(12,1fr);gap:12px;max-width:1720px;margin:0 auto;align-items:stretch}
+  .tile{background:var(--card);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);
+    display:flex;flex-direction:column;min-width:0;overflow:hidden}
+  .t-head{display:flex;align-items:center;gap:8px;padding:11px 14px 0;flex-wrap:wrap}
+  .t-head h3{margin:0;font-size:12.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--ink);font-weight:700;flex:1;min-width:0}
+  .t-head .date-pill{font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:20px;padding:3px 10px;white-space:nowrap}
+  .t-head .live-pill{font-size:10px;color:var(--blue-dk);background:var(--blue-bg);border-radius:20px;padding:3px 9px;white-space:nowrap;font-weight:700}
+  .drag-handle{cursor:grab;color:#c2ccd1;font-size:13px;line-height:1;user-select:none;padding:2px}
+  .drag-handle:active{cursor:grabbing}
+  .tile.dragging{opacity:.45;outline:2px dashed var(--teal)}
+  .t-body{padding:12px 14px 14px;flex:1;min-width:0;display:flex;flex-direction:column;gap:14px}
+  .s5{grid-column:span 5}.s7{grid-column:span 7}.s12{grid-column:span 12}
+  @media(max-width:1280px){.s5,.s7{grid-column:span 12}}
+
+  /* ---- KPI icon cards ---- */
+  .kpi-row{display:grid;gap:10px}
+  .kpi-row.n3{grid-template-columns:repeat(3,1fr)}
+  .kpi-row.n4{grid-template-columns:repeat(4,1fr)}
+  @media(max-width:640px){.kpi-row.n3,.kpi-row.n4{grid-template-columns:repeat(2,1fr)}}
+  .kpi{display:flex;gap:10px;align-items:flex-start;padding:10px;border:1px solid var(--line);border-radius:9px;min-width:0}
+  .kpi-ic{width:36px;height:36px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center}
+  .kpi-ic svg{width:18px;height:18px}
+  .kpi-txt{min-width:0}
+  .kpi-lbl{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;line-height:1.3}
+  .kpi-val{font-size:19px;font-weight:800;line-height:1.25;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .kpi-val.muted{color:var(--muted);font-weight:700;font-size:16px}
+  .kpi-sub{font-size:10px;color:var(--muted);margin-top:1px}
+  .delta{font-weight:700;font-size:11px;margin-left:6px}
+  .delta.up{color:var(--green-dk)} .delta.down{color:var(--red-dk)} .delta.flat{color:var(--muted)}
+
+  .highlight-bar{background:var(--green-bg);border-radius:10px;padding:13px 16px;display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:640px){.highlight-bar{grid-template-columns:1fr}}
+  .hl{display:flex;gap:10px;align-items:flex-start;min-width:0}
+  .hl-ic{width:34px;height:34px;border-radius:50%;background:var(--green);flex:none;display:flex;align-items:center;justify-content:center}
+  .hl-ic svg{width:17px;height:17px}
+  .hl-lbl{font-size:10.5px;color:var(--teal-dk);text-transform:uppercase;letter-spacing:.4px;font-weight:700}
+  .hl-val{font-size:19px;font-weight:800;color:var(--ink)}
+  .hl-val.muted{color:var(--muted)}
+  .hl-sub{font-size:11px;color:var(--muted);margin-top:1px}
+
+  /* ---- charts ---- */
+  .chart-block{min-width:0}
+  .chart-title{font-size:11px;color:var(--muted);font-weight:700;margin-bottom:4px}
+  .chart-wrap{width:100%;min-width:0}
+  svg{display:block} svg text{font-family:inherit}
+  .gridline{stroke:var(--grid);stroke-width:1}.axis{stroke:var(--line);stroke-width:1}
+  .axis-lbl{fill:var(--muted);font-size:10px}
+  .val-lbl{fill:var(--teal-dk);font-size:10px;font-weight:700}
+  .bar-hover{cursor:pointer}.bar-hover:hover{filter:brightness(1.08)}
+  #tip{position:fixed;pointer-events:none;z-index:50;background:#101e22;color:#fff;border-radius:7px;padding:7px 9px;
+    font-size:11.5px;line-height:1.5;box-shadow:0 4px 14px rgba(0,0,0,.25);opacity:0;transition:opacity .08s;max-width:220px}
+  #tip b{color:#fff} #tip .g{color:#7fe3a1}
+  .mini-row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  @media(max-width:640px){.mini-row{grid-template-columns:1fr}}
+
+  /* ---- kanban ---- */
+  .kanban{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;align-items:start}
+  @media(max-width:1100px){.kanban{grid-template-columns:repeat(2,1fr)}}
+  .kcol{min-width:0;display:flex;flex-direction:column}
+  .kcol-head{display:flex;align-items:center;gap:7px;margin-bottom:8px}
+  .kcol-ic{width:24px;height:24px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center}
+  .kcol-ic svg{width:12px;height:12px}
+  .kcol-lbl{font-size:11px;font-weight:700;line-height:1.25;flex:1;min-width:0}
+  .kcol-count{font-size:10px;font-weight:700;color:var(--muted);background:var(--bg);border:1px solid var(--line);border-radius:20px;padding:1px 7px}
+  .kcol-scroll{overflow-y:auto;max-height:520px;padding-right:2px}
+  .kcard{border:1px solid var(--line);border-radius:8px;padding:8px 9px;margin-bottom:8px;font-size:11.5px;background:var(--card2)}
+  .kcard-title{line-height:1.35}
+  .kcard-foot{display:flex;justify-content:space-between;align-items:center;gap:6px;margin-top:6px;padding-top:5px;border-top:1px solid var(--line)}
+  .kcard-st{display:flex;align-items:center;gap:5px;min-width:0;font-size:9.5px;color:var(--muted);font-weight:600;
+    text-transform:uppercase;letter-spacing:.3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .kf-dot{width:8px;height:8px;border-radius:50%;flex:none;background:var(--muted)}
+  .kcard-date{font-size:10px;color:var(--muted);font-weight:600;white-space:nowrap}
+  .kcard-date.fresh{color:var(--green-dk)}
+  .kcard-date.fresh::before{content:'●';font-size:8px;margin-right:3px;vertical-align:1px}
+
+  /* ---- legend + pipeline ---- */
+  .legend-rows{display:flex;flex-direction:column;gap:9px}
+  .legend-row{display:flex;gap:8px;align-items:flex-start;font-size:11.5px;color:var(--muted)}
+  .legend-row .lg{flex:none;width:14px;text-align:center;font-weight:800;color:var(--green-dk);font-size:11px}
+  .legend-row strong{color:var(--ink)}
+  .pipeline{display:flex;align-items:flex-start;justify-content:space-between;gap:4px;margin-top:4px}
+  .pstep{display:flex;flex-direction:column;align-items:center;text-align:center;flex:1;min-width:0;position:relative}
+  .pstep:not(:last-child)::after{content:'';position:absolute;top:17px;left:58%;width:84%;border-top:2px dashed var(--line)}
+  .pstep-ic{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin-bottom:6px;position:relative;z-index:1}
+  .pstep-ic svg{width:16px;height:16px}
+  .pstep-n{font-size:10px;color:var(--muted);font-weight:700}
+  .pstep-l{font-size:10px;color:var(--ink);line-height:1.3;margin-top:2px}
+
+  /* ---- barra de filtro do quadro (mesma da versão local) ----
+     Centralizada e destacada em teal: o filtro de status recorta o quadro de verdade,
+     então tem de ser a primeira coisa que se vê no tile, não um botãozinho no cabeçalho. */
+  .kfilters{display:flex;align-items:center;justify-content:center;gap:9px;flex-wrap:wrap;
+    padding:11px 14px;background:var(--teal-bg);border:1px solid var(--teal-ln);border-radius:10px;margin-bottom:12px}
+  .kf-lbl{font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--teal-dk);font-weight:800}
+  .kf-sep{width:1px;height:22px;background:var(--teal-ln);margin:0 5px}
+  .kf-static{font-size:11.5px;color:var(--ink);background:var(--card);border:1px solid var(--teal-ln);
+    border-radius:7px;padding:5px 11px;cursor:help}
+  .kfilters .chip{background:var(--card)}
+
+  /* ---- filtro de status (múltipla escolha) ---- */
+  .ms{position:relative;display:inline-block}
+  .ms-btn{font-size:12px;padding:5px 11px}
+  .ms-btn.on{border-color:var(--teal);color:var(--teal-dk);font-weight:700;background:var(--teal-bg)}
+  .ms-pop{position:absolute;left:50%;transform:translateX(-50%);top:calc(100% + 7px);z-index:30;
+    width:min(300px,86vw);max-height:340px;
+    overflow-y:auto;background:var(--card);border:1px solid var(--line);border-radius:9px;
+    box-shadow:0 6px 22px rgba(0,0,0,.18);padding:7px}
+  .ms-acts{display:flex;gap:6px;padding:2px 4px 7px;border-bottom:1px solid var(--line);margin-bottom:5px}
+  .ms-link{background:none;border:0;padding:2px 5px;font:inherit;font-size:10.5px;font-weight:700;
+    color:var(--teal-dk);cursor:pointer;border-radius:5px}
+  .ms-link:hover{background:var(--teal-bg)}
+  .ms-grp{font-size:9.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);
+    font-weight:700;padding:6px 5px 3px}
+  .ms-opt{display:flex;align-items:center;gap:7px;padding:4px 5px;border-radius:6px;font-size:11.5px;cursor:pointer}
+  .ms-opt:hover{background:var(--bg)}
+  .ms-opt input{margin:0;cursor:pointer;flex:none}
+  .ms-opt .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ms-opt .ct{font-size:10px;color:var(--muted);font-weight:700}
+  .note{font-size:10.5px;color:var(--muted);border-top:1px solid var(--line);padding-top:8px;margin-top:2px}
+  .note .hid{color:var(--orange-dk);font-weight:700}
+  .state{padding:22px 14px;text-align:center;font-size:12px;border:1px dashed var(--line);border-radius:9px;color:var(--muted)}
+  .state.err{color:var(--red-dk);border-color:#f0cfcf;background:var(--red-bg)}
+  .state.empty{color:var(--gold-dk);border-color:#f0e0bd;background:var(--gold-bg)}
+  .state b{display:block;margin-bottom:4px}
+  .state small{display:block;margin-top:6px;opacity:.85}
+  .boot{padding:40px;text-align:center;color:var(--red-dk)}
+</style>
+</head>
+<body>
+<header>
+  <h1>JEM Marketing Daily Report</h1>
+  <div class="meta">Atualizado em <strong id="refreshedAt">—</strong></div>
+  <div class="rgroup" id="srcPills"></div>
+  <div class="rgroup">
+    <button class="chip" id="themeToggle" title="Alternar entre fundo claro e escuro (vale para esta sessão)">☾ Escuro</button>
+    <button class="chip" id="resetLayout" title="Voltar ao arranjo original dos blocos">⟲ Ordem padrão</button>
+  </div>
+</header>
+
+<div class="filters">
+  <label>Dia do relatório</label>
+  <button class="chip" id="btnToday">Hoje</button>
+  <button class="chip" id="btnYesterday">Ontem</button>
+  <span class="sep"></span>
+  <input type="date" id="dayPicker">
+</div>
+
+<main><div class="tiles" id="tiles"></div><div class="boot" id="bootErr" style="display:none"></div></main>
+<div id="tip"></div>
+
+<script>
+"use strict";
+
+/* ============================================================================
+   DATA LAYER — the portal intercepts fetch('data/<name>.json') and answers with
+   the server-side snapshot. Never embed data, never call an external API.
+   AIDash (optional runtime) is used only for status/error/refreshedAt.
+   ============================================================================ */
+/* ClickUp em 3 requisições, não 7 (ver o manifesto):
+   - `clickup_board_pg0` + `clickup_board_pg1`: as 2 primeiras páginas da view. Ela devolve
+     as ATIVAS antes das concluídas (agrupa por status), e as ativas cabem nos 60 primeiros
+     itens -- verificado. Guarda em `boardGuards()` para o dia em que não couberem.
+   - `clickup_concluidas`: as concluídas das listas do board nos últimos 60 dias, numa
+     requisição de 100. Não dá para tirar a coluna 5 das 2 páginas: a ordem das concluídas
+     na view é arbitrária (84 quebras de ordem medidas), então as mais recentes ficam
+     espalhadas nas 6 páginas. */
+const CU_BOARD_SETS=['clickup_board_pg0','clickup_board_pg1'];
+const CU_DONE_SET='clickup_concluidas';
+/* lista-raiz da view do go-live: é a chave da regra de pertinência ao board */
+const CU_BOARD_LIST_ID='901112863157';
+/* as list_ids fixadas no `query` do dataset de conclusões -- se o board passar a incluir
+   uma lista fora desta relação, `boardGuards()` avisa na tela (não some calado) */
+const CU_DONE_LIST_IDS=['901112863157','901110423629','901113068292'];
+const SETS=['mkt_orders','mkt_totais','mkt_novos_contatos',...CU_BOARD_SETS,CU_DONE_SET];
+/* Base do dia anterior: dataset OPCIONAL. Enquanto não existir uma URL publicando o
+   estado do quadro de ontem, ele simplesmente não é declarado no manifesto — e a ausência
+   NÃO é erro: o quadro funciona igual, só sem setas, e o rodapé diz por quê. Quando a URL
+   existir, ativar o bloco no manifesto liga as setas sem tocar neste arquivo.
+   Formato esperado (uma linha por tarefa):
+     {refere_se_a:"2026-07-28", id:"868...", col:3, status:"ready to deploy"}
+   `col` = 1..5 na ordem de KCOLS. Sem título de tarefa de propósito. */
+const BASELINE_SET='board_baseline';
+const BASELINE_MAX_AGE_DAYS=3;
+
+function metaOf(name){
+  try{ return (window.AIDash && typeof AIDash.meta==='function') ? AIDash.meta(name) : null; }
+  catch(e){ return null; }
+}
+/* De onde tirar as LINHAS do que o portal devolve.
+   Não basta aceitar `[...]` e `{rows:[...]}`: em 29/07, com `paginate: false`, os datasets
+   do ClickUp chegaram num envelope que o leitor antigo não reconhecia, e o tile disse
+   "Nenhuma tarefa retornada" -- sem erro, sem pista, com o dado ali dentro. Provável
+   causa: `select` é aplicado pelo paginador, então sem paginação vem o corpo cru
+   (`{tasks:[...], last_page:...}`). Agora qualquer envelope plausível serve, E o formato
+   observado fica registrado (`shape`) para aparecer na tela em vez de virar adivinhação. */
+/* `tarefas` está aqui porque é a chave do arquivo de base do dia anterior (ver o
+   manifesto): se o portal servir o corpo cru desse arquivo, as linhas são achadas. */
+const ROW_KEYS=['rows','tasks','tarefas','data','items','records','results','value','list'];
+function rowsFrom(j){
+  if(Array.isArray(j))return {rows:j,shape:'lista'};
+  if(j&&typeof j==='object'){
+    for(const k of ROW_KEYS)
+      if(Array.isArray(j[k]))return {rows:j[k],shape:`objeto → .${k}[]`};
+    for(const k of Object.keys(j))          // último recurso: a 1ª propriedade que é lista
+      if(Array.isArray(j[k]))return {rows:j[k],shape:`objeto → .${k}[] (por dedução)`};
+    return {rows:[],shape:`objeto sem lista dentro {${Object.keys(j).slice(0,8).join(', ')}}`};
+  }
+  return {rows:[],shape:j==null?'vazio (null)':typeof j};
+}
+async function loadSet(name){
+  const meta=metaOf(name);
+  if(meta && meta.status==='ERROR')
+    return {name,rows:[],meta,shape:null,error:meta.error||'Falha ao carregar no servidor'};
+  try{
+    const r=await fetch('data/'+name+'.json',{cache:'no-store'});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const {rows,shape}=rowsFrom(await r.json());
+    return {name,rows,meta,shape,error:null};
+  }catch(e){
+    return {name,rows:[],meta,shape:null,error:(meta&&meta.error)||String(e.message||e)};
+  }
+}
+/* status of a dataset: 'err' | 'empty' | 'ok' */
+const stateOf=s=>s.error?'err':(s.rows.length?'ok':'empty');
+
+/* ============================ FORMATTERS ============================ */
+const MON=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+const MESES=['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+const F={
+  int:n=>n==null?'—':Number(n).toLocaleString('en-US'),
+  money:n=>n==null?'—':Number(n).toLocaleString('en-US',{style:'currency',currency:'USD',minimumFractionDigits:2,maximumFractionDigits:2}),
+  moneyK:n=>{const a=Math.abs(n);return a>=1e6?'$'+(n/1e6).toFixed(2)+'M':a>=1e3?'$'+Math.round(n/1e3)+'K':'$'+Math.round(n);},
+  pct:n=>n==null?'—':Number(n).toFixed(2)+'%',
+  dateBR:s=>{if(!s)return'—';const[y,m,d]=s.split('-');return `${d} de ${MESES[+m-1]} de ${y}`;},
+};
+function el(h){const t=document.createElement('template');t.innerHTML=h.trim();return t.content.firstChild;}
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function deltaChip(v,suffix){
+  if(v==null)return `<span class="delta flat">—</span>`;
+  const cls=v>0?'up':v<0?'down':'flat', sign=v>0?'+':'';
+  return `<span class="delta ${cls}">${sign}${v}${suffix||''}</span>`;
+}
+
+const TIP=document.getElementById('tip');
+function showTip(html,e){TIP.innerHTML=html;TIP.style.opacity='1';moveTip(e);}
+function moveTip(e){const w=TIP.offsetWidth,vw=innerWidth;let x=e.clientX+14;if(x+w>vw-8)x=e.clientX-w-14;TIP.style.left=x+'px';TIP.style.top=(e.clientY+14)+'px';}
+function hideTip(){TIP.style.opacity='0';}
+
+/* ============================ ICONS (inline SVG, white glyph) ============================ */
+const ICONS={
+  building:'<path d="M4 20V5a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v15M14 20V9a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v11M4 20h16M7 7h1M10 7h1M7 10h1M10 10h1M7 13h1M10 13h1M17 12h1M17 15h1" stroke="#fff" stroke-width="1.6" fill="none" stroke-linecap="round"/>',
+  people:'<circle cx="9" cy="8" r="3" fill="#fff"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6" stroke="#fff" stroke-width="1.6" fill="none" stroke-linecap="round"/><circle cx="17" cy="9" r="2.4" fill="none" stroke="#fff" stroke-width="1.5"/><path d="M15.2 14.3c2.6.3 4.6 2.5 4.8 5.7" stroke="#fff" stroke-width="1.5" fill="none" stroke-linecap="round"/>',
+  cart:'<circle cx="9" cy="20" r="1.3" fill="#fff"/><circle cx="17" cy="20" r="1.3" fill="#fff"/><path d="M3 4h2l2.2 11.2a1.5 1.5 0 0 0 1.5 1.3h8.6a1.5 1.5 0 0 0 1.5-1.2L20.5 8H6" stroke="#fff" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
+  dollar:'<path d="M12 3v18M16.5 7.5c0-1.7-2-3-4.5-3s-4.5 1.2-4.5 3 2 2.6 4.5 3 4.5 1.3 4.5 3-2 3-4.5 3-4.5-1.3-4.5-3" stroke="#fff" stroke-width="1.7" fill="none" stroke-linecap="round"/>',
+  calendar:'<rect x="4" y="5.5" width="16" height="14.5" rx="2" fill="none" stroke="#fff" stroke-width="1.6"/><path d="M4 10h16M8 3v4M16 3v4" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/>',
+  trend:'<path d="M4 16l5-5 4 3 7-8" stroke="#fff" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M15 6h5v5" stroke="#fff" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
+  star:'<path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.2 1 5.9L12 17l-5.2 2.8 1-5.9-4.3-4.2 5.9-.8L12 3.5z" fill="#fff"/>',
+  play:'<path d="M8 5.5v13l11-6.5-11-6.5z" fill="#fff"/>',
+  clock:'<circle cx="12" cy="12" r="8.2" fill="none" stroke="#fff" stroke-width="1.6"/><path d="M12 7.5V12l3.2 2" stroke="#fff" stroke-width="1.6" fill="none" stroke-linecap="round"/>',
+  flask:'<path d="M9 3h6M10.5 3v5.5L5.6 17.4A2 2 0 0 0 7.4 20.5h9.2a2 2 0 0 0 1.8-3.1L13.5 8.5V3" stroke="#fff" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
+  rocket:'<path d="M12 2.5c3 1.6 4.8 4.7 4.8 8.6 0 2-.5 3.6-1.2 5l-3.6 3-3.6-3c-.7-1.4-1.2-3-1.2-5 0-3.9 1.8-7 4.8-8.6z" fill="#fff"/><circle cx="12" cy="10.5" r="1.6" fill="var(--purple)"/><path d="M8.6 16.5l-2.4 4M15.4 16.5l2.4 4" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/>',
+  clipboard:'<rect x="5.5" y="4.5" width="13" height="16" rx="1.6" fill="none" stroke="#fff" stroke-width="1.5"/><rect x="9" y="3" width="6" height="3" rx="1" fill="#fff"/><path d="M8.5 12l2.3 2.3L15.5 10" stroke="#fff" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
+  trophy:'<path d="M7 4h10v4a5 5 0 0 1-10 0V4z" fill="#fff"/><path d="M7 5H4v1.5A3.5 3.5 0 0 0 7 10M17 5h3v1.5A3.5 3.5 0 0 1 17 10" stroke="#fff" stroke-width="1.4" fill="none"/><path d="M10 15.5h4v2h-4z" fill="#fff"/><path d="M8 20.5h8" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/><path d="M12 17.5v1" stroke="#fff" stroke-width="1.6"/>',
+};
+function icon(name,size){return `<svg viewBox="0 0 24 24" width="${size||18}" height="${size||18}">${ICONS[name]||''}</svg>`;}
+const COLVAR={teal:'var(--teal)',blue:'var(--blue)',green:'var(--green)',gold:'var(--gold)',orange:'var(--orange)',purple:'var(--purple)'};
+
+function kpiCard(o){
+  const na=o.na;
+  return `<div class="kpi">
+    <div class="kpi-ic" style="background:${COLVAR[o.color]}">${icon(o.icon)}</div>
+    <div class="kpi-txt">
+      <div class="kpi-lbl">${o.label}</div>
+      <div class="kpi-val ${na?'muted':''}">${na?'—':o.value}${o.delta!==undefined?deltaChip(o.delta,o.deltaSuffix):''}</div>
+      <div class="kpi-sub">${na?(o.naNote||'Indisponível'):(o.sub||'')}</div>
+    </div>
+  </div>`;
+}
+function stateBox(kind,title,detail){
+  return `<div class="state ${kind}"><b>${title}</b>${detail?`<small>${detail}</small>`:''}</div>`;
+}
+/* Timeout NÃO é problema de credencial -- chave ausente/errada/sem permissão volta
+   401/403. Confundir os dois manda quem lê investigar o lado errado (foi o que
+   aconteceu em 29/07: a caixa listava "credencial de equipe" como causa nº 1 diante de
+   uma mensagem de timeout). */
+function isTimeoutErr(msg){
+  return /timeout|timed?\s*out|aborted|ETIMEDOUT|ECONNRESET|deadline|504/i.test(String(msg||''));
+}
+function clickupErrorBox(msg){
+  if(isTimeoutErr(msg))
+    return stateBox('empty','O ClickUp não respondeu em tempo',
+      '<b style="display:inline">Erro retornado:</b> '+esc(msg)
+      +'<br><b style="display:inline">Não é problema de credencial</b> — chave ausente, errada ou sem '
+      +'permissão volta <code>401</code>/<code>403</code>, não timeout.'
+      +'<br>O endpoint da view (<code>/view/6-901112863157-2/task</code>) tem lentidão <b>intermitente '
+      +'conhecida</b>: medido em 29/07/2026, a varredura completa (6 páginas de 30 tarefas) levou '
+      +'<b>8 a 12s</b> em três rodadas seguidas — mas de vez em quando uma página passa de 45s e '
+      +'estoura o tempo da plataforma.'
+      +'<br><b style="display:inline">O que fazer: atualizar de novo</b> — costuma passar na tentativa '
+      +'seguinte. Só se falhar <b>3 vezes seguidas</b> vale investigar credencial: chave cadastrada em '
+      +'<b>Sistemas → ClickUp</b>, <code>credentials: shared</code>, e se a view '
+      +'<code>6-901112863157-2</code> ainda existe.'
+      +'<br>Os números do site acima não dependem do ClickUp e continuam válidos.');
+  return stateBox('err','Não foi possível carregar o ClickUp',
+    '<b style="display:inline">Erro retornado:</b> '+esc(msg)
+    +'<br>Causas possíveis, em ordem: o dataset pede uma credencial de <b>equipe</b> '
+    +'(<code>credentials: shared</code>) e só existe a conexão pessoal · a conexão do ClickUp não '
+    +'alcança a view <code>6-901112863157-2</code> (permissão) · a view foi renomeada ou removida '
+    +'· a chave não está cadastrada em <b>Sistemas → ClickUp</b>.');
+}
+
+/* ============================ CHARTS ============================ */
+function drawRevenueBar(container,rows){
+  if(!container)return;
+  const W=520,H=190,L=44,R=10,T=26,B=26,iw=W-L-R,ih=H-T-B;
+  const max=Math.max(1,...rows.map(r=>r.revenue))*1.12;
+  const slot=iw/rows.length, bw=Math.min(24,slot*0.55);
+  const x=i=>L+(i+0.5)*slot, y=v=>T+ih-(v/max)*ih;
+  let g='';for(let t=0;t<=3;t++){const yy=T+ih-t/3*ih;g+=`<line class="gridline" x1="${L}" y1="${yy}" x2="${W-R}" y2="${yy}"/>`;}
+  let bars='',lab='',xl='';
+  rows.forEach((r,i)=>{const yy=y(r.revenue),h=T+ih-yy;
+    bars+=`<rect data-i="${i}" class="bar-hover" x="${(x(i)-bw/2).toFixed(1)}" y="${yy.toFixed(1)}" width="${bw}" height="${Math.max(0,h).toFixed(1)}" rx="4" fill="var(--teal)"/>`;
+    lab+=`<text class="val-lbl" x="${x(i)}" y="${(yy-6).toFixed(1)}" text-anchor="middle">${F.moneyK(r.revenue)}</text>`;
+    xl+=`<text class="axis-lbl" x="${x(i)}" y="${H-B+15}" text-anchor="middle">${MON[+r.ym.slice(5,7)-1]}/${r.ym.slice(2,4)}</text>`;});
+  container.innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="xMidYMid meet" style="height:auto">
+    ${g}${bars}${lab}<line class="axis" x1="${L}" y1="${T+ih}" x2="${W-R}" y2="${T+ih}"/>${xl}</svg>`;
+  container.querySelectorAll('rect[data-i]').forEach(rc=>{const r=rows[+rc.dataset.i];
+    rc.addEventListener('mousemove',e=>showTip(`<b>${MON[+r.ym.slice(5,7)-1]}/${r.ym.slice(0,4)}</b><br><span class="g">Faturamento: ${F.money(r.revenue)}</span><br>Pedidos: ${F.int(r.orders)}`,e));
+    rc.addEventListener('mouseleave',hideTip);});
+}
+function drawOrdersLine(container,rows){
+  if(!container)return;
+  const W=520,H=190,L=34,R=14,T=26,B=26,iw=W-L-R,ih=H-T-B;
+  const n=rows.length,vals=rows.map(r=>r.orders),max=Math.max(1,...vals)*1.15,min=Math.min(...vals)*0.9;
+  const x=i=>L+(n<=1?iw/2:i*(iw/(n-1))), y=v=>T+ih-((v-min)/(max-min||1))*ih;
+  let g='';for(let t=0;t<=3;t++){const yy=T+ih-t/3*ih;g+=`<line class="gridline" x1="${L}" y1="${yy}" x2="${W-R}" y2="${yy}"/>`;}
+  const pts=rows.map((r,i)=>`${x(i).toFixed(1)},${y(r.orders).toFixed(1)}`).join(' ');
+  let dots='',lab='',xl='',hits='';
+  const bw=iw/Math.max(n,1);
+  rows.forEach((r,i)=>{
+    dots+=`<circle cx="${x(i).toFixed(1)}" cy="${y(r.orders).toFixed(1)}" r="4.5" fill="var(--teal)" stroke="var(--card)" stroke-width="2"/>`;
+    lab+=`<text class="val-lbl" x="${x(i).toFixed(1)}" y="${(y(r.orders)-10).toFixed(1)}" text-anchor="middle">${F.int(r.orders)}</text>`;
+    xl+=`<text class="axis-lbl" x="${x(i).toFixed(1)}" y="${H-B+15}" text-anchor="middle">${MON[+r.ym.slice(5,7)-1]}/${r.ym.slice(2,4)}</text>`;
+    hits+=`<rect data-i="${i}" x="${(x(i)-bw/2).toFixed(1)}" y="${T}" width="${bw.toFixed(1)}" height="${ih}" fill="transparent"/>`;});
+  container.innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="xMidYMid meet" style="height:auto">
+    ${g}<polyline points="${pts}" fill="none" stroke="var(--teal)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>${dots}${lab}
+    <line class="axis" x1="${L}" y1="${T+ih}" x2="${W-R}" y2="${T+ih}"/>${xl}${hits}</svg>`;
+  container.querySelectorAll('rect[data-i]').forEach(rc=>{const r=rows[+rc.dataset.i];
+    rc.addEventListener('mousemove',e=>showTip(`<b>${MON[+r.ym.slice(5,7)-1]}/${r.ym.slice(0,4)}</b><br>Pedidos: ${F.int(r.orders)}<br><span class="g">Faturamento: ${F.money(r.revenue)}</span>`,e));
+    rc.addEventListener('mouseleave',hideTip);});
+}
+
+/* ============================ CLICKUP → KANBAN ============================ */
+/* Both lists share the same 15 real statuses. `backlog` is excluded on purpose
+   (not started != active pipeline). Anything unmapped is counted and surfaced in
+   a footer note, so a NEW ClickUp status shows up as a warning instead of
+   vanishing silently. */
+const KCOLS=[
+  {key:'in_progress',    label:'Em andamento',                        icon:'play',      color:'green',
+   statuses:['researching','to do (sprint)','doing','on hold','blocked','code review - stg']},
+  {key:'ready_stg',      label:'Prontas para validação (STG)',        icon:'clock',     color:'blue',
+   statuses:['ready for testing - stg','testing - stg','fail - stg']},
+  {key:'awaiting_deploy',label:'Tarefas aguardando Deploy',           icon:'rocket',    color:'purple',
+   statuses:['ready to deploy']},
+  {key:'ready_prd',      label:'Tarefas prontas para validação (PRD)',icon:'clipboard', color:'orange',
+   statuses:['ready for testing - prd','testing - prd','fail - prd']},
+  {key:'done_prd',       label:'Conclusões mais recentes (PRD)',      icon:'trophy',    color:'gold',
+   statuses:['approved by qa - prd','closed']},
+];
+const DONE_TOP_N=10;
+const STATUS_IGNORED=['backlog'];
+const STATUS2COL=(()=>{const m=new Map();for(const c of KCOLS)for(const s of c.statuses)m.set(s,c.key);return m;})();
+
+/* ClickUp rows: `status` is a nested object ({status,type,...}) but be tolerant of
+   a flattened string; epochs arrive as ms strings. */
+function cuStatus(t){
+  const s=t&&t.status;
+  if(!s)return '';
+  if(typeof s==='string')return s.toLowerCase().trim();
+  return String(s.status||s.name||'').toLowerCase().trim();
+}
+function cuName(t){return (t&&(t.name||t.title))||'(sem título)';}
+/* cor do próprio ClickUp para o status; só existe no payload REST cru (status como
+   objeto) -- na forma compacta cai no cinza padrão em vez de inventar cor */
+function cuStatusColor(t){
+  const s=t&&t.status;
+  return (s&&typeof s==='object'&&s.color)?String(s.color):'';
+}
+function cuList(t){
+  const l=t&&t.list;
+  if(l&&typeof l==='object')return l.name||'';
+  return (t&&(t['list.name']||t.list_name))||'';
+}
+function cuListId(t){
+  const l=t&&t.list;
+  return (l&&typeof l==='object'&&l.id!=null)?String(l.id):'';
+}
+/* Está no board do go-live? A view é uma view de LISTA, então pertence ao board quem tem
+   aquela lista como lista-mãe OU quem foi adicionado a ela (multi-list, `locations`).
+   Verificado contra a view inteira em 29/07: 94/94 e 100/100 acertos. É o que permite
+   trazer as conclusões por consulta de equipe sem colar no quadro tarefa que o time não
+   pôs lá. */
+function cuOnBoard(t){
+  if(cuListId(t)===CU_BOARD_LIST_ID)return true;
+  const locs=(t&&t.locations)||[];
+  return Array.isArray(locs)&&locs.some(l=>l&&String(l.id)===CU_BOARD_LIST_ID);
+}
+function cuMs(v){const n=Number(v);return Number.isFinite(n)&&n>0?n:null;}
+function cuUpdated(t){return cuMs(t&&t.date_updated);}
+/* completion timestamp: date_closed for closed-type statuses, date_done for
+   `approved by qa - prd` (a done-type status, which leaves date_closed null).
+   Both ship in the plain list-task response -- no per-task extra call. */
+function cuDone(t){return cuMs(t&&t.date_closed)||cuMs(t&&t.date_done)||cuUpdated(t);}
+
+function d2(n){return String(n).padStart(2,'0');}
+function fmtDay(ms){const d=new Date(ms);return d2(d.getDate())+'/'+d2(d.getMonth()+1);}
+function fmtDayTime(ms){const d=new Date(ms);return fmtDay(ms)+' '+d2(d.getHours())+':'+d2(d.getMinutes());}
+function isoDay(ms){const d=new Date(ms);return d.getFullYear()+'-'+d2(d.getMonth()+1)+'-'+d2(d.getDate());}
+
+/* ---------------- base do dia anterior -> setas de tendência ----------------
+   A conta da seta nunca foi o problema (numerar as colunas 1→5 e comparar); o problema é
+   de onde vem o "ontem". Aqui ele vem de um dataset, não de cálculo: o portal não guarda
+   estado entre atualizações nem encadeia requisições. Regras que esta função respeita, e
+   que não são detalhe:
+   · tarefa AUSENTE da base recebe "novo", nunca "=" -- dizer "mesma etapa" de uma tarefa
+     que não existia ontem é falso;
+   · a base declara a que dia se refere, e isso vai para a TELA junto com a seta: seta sem
+     dizer contra que dia compara é seta que ninguém pode auditar;
+   · base velha (> BASELINE_MAX_AGE_DAYS) desliga as setas em vez de comparar com um dia
+     qualquer -- seta errada é pior que seta nenhuma. */
+function readBaseline(set){
+  if(!set||set.error||!set.rows||!set.rows.length)
+    return {ok:false,map:null,refDate:null,reason:set&&set.error?'erro':'ausente',rows:0};
+  const map=new Map(); let refDate=null;
+  for(const r of set.rows){
+    const id=String(r&&(r.id||r.task_id)||'');
+    const col=Number(r&&r.col);
+    if(!id||!Number.isFinite(col))continue;
+    map.set(id,{col,status:String((r&&r.status)||'')});
+    const d=String((r&&r.refere_se_a)||'').slice(0,10);
+    if(d&&(!refDate||d>refDate))refDate=d;
+  }
+  return {ok:map.size>0,map,refDate,reason:map.size?null:'sem linha utilizável',rows:set.rows.length};
+}
+function baselineAge(refDate,boardDay){
+  if(!refDate||!boardDay)return null;
+  return Math.round((Date.parse(boardDay+'T00:00:00Z')-Date.parse(refDate+'T00:00:00Z'))/86400000);
+}
+function trendOf(t,baseline){
+  if(!baseline||!baseline.usable)return null;
+  const prev=baseline.map.get(String(t&&t.id||''));
+  if(!prev)return 'new';
+  const nowKey=STATUS2COL.get(cuStatus(t));
+  const nowCol=KCOLS.findIndex(c=>c.key===nowKey)+1;
+  if(!nowCol)return null;
+  return nowCol>prev.col?'up':(nowCol<prev.col?'down':'same');
+}
+const TREND_GLYPH={up:'▲',down:'▼',same:'=',new:'novo'};
+function statusToCol(st){return STATUS2COL.get(st)||null;}
+function trendTitle(tr,baseline,prev){
+  const base=baseline&&baseline.refDate?` (base: fechamento de ${baseline.refDate.slice(8,10)}/${baseline.refDate.slice(5,7)})`:'';
+  if(tr==='new')return 'Não estava no quadro na base do dia anterior — sem etapa anterior para comparar'+base;
+  const de=prev?`etapa ${prev.col} → `:'';
+  return (tr==='up'?'Avanço de etapa':tr==='down'?'Recuo de etapa':'Mesma etapa')+' '+de+base;
+}
+
+/* Colunas 1–4 saem das páginas da view; a coluna 5 sai do dataset de conclusões,
+   filtrado pela regra de pertinência ao board (`cuOnBoard`). As tarefas concluídas que
+   aparecem nas páginas lidas NÃO alimentam a coluna 5 -- elas são só a prova de que a
+   fronteira ativas→concluídas foi alcançada (`doneInView`, ver boardGuards). */
+function buildBoard(viewTasks,doneTasks){
+  const cols=KCOLS.map(c=>({...c,tasks:[]}));
+  const byKey=new Map(cols.map(c=>[c.key,c]));
+  const unmapped=new Map();
+  let doneInView=0;
+  for(const t of viewTasks){
+    const st=cuStatus(t);
+    if(!st||STATUS_IGNORED.includes(st))continue;
+    const key=STATUS2COL.get(st);
+    if(!key){unmapped.set(st,(unmapped.get(st)||0)+1);continue;}
+    if(key==='done_prd'){doneInView++;continue;}
+    byKey.get(key).tasks.push(t);
+  }
+  const seen=new Set(), dones=[];
+  for(const t of (doneTasks||[])){
+    if(!cuOnBoard(t))continue;                       // não está no board: não entra
+    if(STATUS2COL.get(cuStatus(t))!=='done_prd')continue;
+    const id=String(t&&t.id||'');
+    if(id&&seen.has(id))continue;
+    if(id)seen.add(id);
+    dones.push(t);
+  }
+  dones.sort((a,b)=>(cuDone(b)||0)-(cuDone(a)||0));
+  const doneTotal=dones.length;
+  byKey.get('done_prd').tasks=dones.slice(0,DONE_TOP_N);
+  /* active columns: most recently touched first */
+  for(const c of cols) if(c.key!=='done_prd') c.tasks.sort((a,b)=>(cuUpdated(b)||0)-(cuUpdated(a)||0));
+  return {cols,unmapped,doneTotal,doneInView};
+}
+/* Cada premissa do desenho de 3 requisições tem aqui a sua checagem em tempo de
+   execução. Nenhuma delas pode falhar em silêncio: o rodapé do tile mostra o aviso. */
+function boardGuards(D,board){
+  const w=[];
+  if(D.err.boardPg1)
+    w.push('⚠ A <b>página 1</b> da view não carregou — o quadro está mostrando só as '
+      +'30 primeiras tarefas e pode faltar tarefa ativa. Atualize de novo.');
+  else if(board.doneInView===0&&D.tasks.length)
+    w.push('⚠ As páginas lidas não trouxeram <b>nenhuma tarefa concluída</b>. A view devolve as '
+      +'ativas antes das concluídas, então isso significa que a fronteira não foi alcançada: '
+      +'pode haver tarefa ativa fora do quadro. Some uma página no manifesto '
+      +'(<code>clickup_board_pg2</code>).');
+  /* Dataset que responde SEM erro e SEM linha nenhuma é o caso mais silencioso: não há
+     mensagem de erro para mostrar, e o quadro pode continuar renderizando com o resto.
+     Aqui ele vira aviso nomeado, com o formato observado. */
+  for(const s of (D.cuShapes||[])){
+    if(s.error||s.rows)continue;
+    const semLista=/sem lista|vazio|string|number/.test(s.shape||'');
+    w.push(`⚠ O dataset <code>${esc(s.name)}</code> respondeu <b>sem nenhuma linha</b> `
+      +`(formato: ${esc(s.shape||'?')})`
+      +(semLista
+        ? ' — o envelope não tem lista dentro, o que costuma ser o <code>select</code> não '
+          +'aplicado sem paginação: tente remover a linha <code>paginate: false</code> do bloco.'
+        : ' — se persistir, confira a view e a permissão da chave.'));
+  }
+  if(D.err.clickupDone)
+    w.push('⚠ A consulta de <b>conclusões</b> não carregou ('+esc(D.err.clickupDone)+') — a coluna 5 '
+      +'ficou vazia. As outras quatro colunas não dependem dela e continuam corretas.');
+  if(D.doneTruncated)
+    w.push('⚠ A consulta de conclusões voltou no limite de <b>100 linhas</b> (truncada), então a '
+      +'coluna 5 pode não ser a das mais recentes. Reduza a janela <code>date_updated_gt</code> '
+      +'no manifesto.');
+  if(!D.err.clickupDone&&board.doneTotal<DONE_TOP_N)
+    w.push(`Só <b>${board.doneTotal}</b> conclusão(ões) na janela de 60 dias da consulta — a coluna 5 `
+      +'mostra menos que as 10 de sempre porque não há mais nesse período.');
+  const fora=(D.listIdsSeen||[]).filter(id=>id&&CU_DONE_LIST_IDS.indexOf(id)<0);
+  if(fora.length)
+    w.push('⚠ O board inclui tarefa(s) da(s) lista(s) '
+      +fora.map(id=>`<code>${esc(D.listNameById[id]||id)}</code>`).join(', ')
+      +' , que está fora das <code>list_ids</code> fixadas na consulta de conclusões — '
+      +'conclusão dessa lista não apareceria na coluna 5. Acrescente o id no manifesto.');
+  return w;
+}
+function kcardHtml(t,colKey,freshDay,baseline){
+  const list=cuList(t);
+  let right='';
+  if(colKey==='done_prd'){
+    const ms=cuDone(t);
+    right=`<span class="kcard-date">${ms?'concluída '+fmtDayTime(ms):'—'}</span>`;
+  }else{
+    const ms=cuUpdated(t);
+    const fresh=ms&&freshDay&&isoDay(ms)===freshDay;
+    /* a seta vem ANTES da data, não no lugar dela: a data ("mexeu agora") e a etapa
+       ("avançou/recuou") são informações diferentes e as duas cabem */
+    const tr=trendOf(t,baseline);
+    const arrow=tr
+      ? `<span class="trend ${tr}" title="${esc(trendTitle(tr,baseline,baseline.map.get(String(t.id||''))))}">${TREND_GLYPH[tr]}</span> `
+      : '';
+    right=`${arrow}<span class="kcard-date ${fresh?'fresh':''}" title="${ms?'date_updated: '+new Date(ms).toLocaleString():'sem date_updated'}">${ms?'atualizada '+fmtDay(ms):'—'}</span>`;
+  }
+  /* à esquerda o STATUS (é o que o filtro recorta, então precisa estar visível no
+     cartão); a lista virou tooltip do título, que é onde ela importa */
+  const st=cuStatus(t), col=cuStatusColor(t);
+  const dot=col?`<span class="kf-dot" style="background:${esc(col)}"></span>`:'';
+  return `<div class="kcard"><div class="kcard-title" title="${esc(list)}">${esc(cuName(t))}</div>
+    <div class="kcard-foot"><span class="kcard-st" title="Status no ClickUp: ${esc(st)}${list?' · lista: '+esc(list):''}">${dot}${esc(st)}</span>${right}</div></div>`;
+}
+function kanbanHtml(board,freshDay,listNames,hiddenByFilter,guards,baseline){
+  const cols=board.cols.map(c=>`
+    <div class="kcol">
+      <div class="kcol-head"><div class="kcol-ic" style="background:${COLVAR[c.color]||'var(--muted)'}">${icon(c.icon,12)}</div>
+        <div class="kcol-lbl">${c.label}</div><span class="kcol-count">${c.tasks.length}</span></div>
+      <div class="kcol-scroll">${c.tasks.map(t=>kcardHtml(t,c.key,freshDay,baseline)).join('')
+        ||'<div class="kcard" style="color:var(--muted);text-align:center;background:none;border-style:dashed">—</div>'}</div>
+    </div>`).join('');
+  const notes=[];
+  if(hiddenByFilter)notes.push(`<span class="hid">Filtro de status ativo: ${hiddenByFilter} tarefa(s) escondida(s) do quadro.</span> O quadro abaixo NÃO é o total — limpe o filtro para ver tudo.`);
+  notes.push(`Espelha a view <b>Board</b> do go-live no ClickUp — quem entra no quadro é a view, não um critério deste dashboard.${(listNames&&listNames.length)?` Ela reúne tarefas de: ${listNames.map(n=>esc(n)).join(' · ')}.`:''}`);
+  notes.push(`"Conclusões mais recentes" mostra as ${DONE_TOP_N} mais recentes entre ${board.doneTotal} concluídas nos últimos 60 dias — <b>estas o board esconde</b> (a view usa <code>show_closed: false</code>). Status <code>backlog</code> fica fora do quadro de propósito.`);
+  notes.push(`Coletado em <b>3 requisições</b> (2 páginas da view para as colunas 1–4 + 1 consulta de conclusões), não em 7 — cada requisição a menos é uma chance a menos de estourar o tempo nesse endpoint.`);
+  /* A seta só existe se alguém preservou o dia anterior. Os três estados são declarados,
+     porque "sem seta" e "seta contra um dia velho" não são a mesma coisa. */
+  if(baseline&&baseline.usable)
+    notes.push(`Setas ▲▼= comparam a etapa de hoje com a <b>base do fechamento de ${esc(baseline.refDate)}</b>`
+      +` (${baseline.map.size} tarefas na base). Tarefa que não está na base aparece como <b>novo</b>, nunca como “=”.`);
+  else if(baseline&&baseline.stale)
+    notes.push(`⚠ Setas <b>desligadas</b>: a base do dia anterior está velha (${esc(baseline.refDate)},`
+      +` ${baseline.age} dias). Comparar com um dia qualquer produziria seta errada, que é pior que seta nenhuma.`);
+  else
+    notes.push(`Sem setas ▲▼=: elas precisam do <b>estado do quadro de ontem</b>, e o portal não guarda`
+      +` histórico — ele refaz todas as consultas do zero a cada atualização. Basta publicar esse`
+      +` arquivo diário numa URL e ativar o dataset <code>${esc(BASELINE_SET)}</code> no manifesto;`
+      +` esta tela já está pronta para lê-lo.`);
+  if(board.unmapped.size){
+    const list=[...board.unmapped.entries()].map(([s,n])=>`<b>${esc(s)}</b> (${n})`).join(', ');
+    notes.push(`⚠ ${board.unmapped.size} status não mapeado(s) para nenhuma coluna, portanto fora do quadro: ${list}. Se um status novo foi criado no ClickUp, o mapa deste dashboard precisa ser atualizado.`);
+  }
+  for(const g of (guards||[]))notes.push(g);
+  return `<div class="kanban">${cols}</div><div class="note">${notes.join('<br>')}</div>`;
+}
+
+/* ============ FILTRO DE STATUS (múltipla escolha, escopo = só o quadro) ============
+   Catálogo montado a partir dos status que REALMENTE aparecem no payload, com contagem
+   -- não de uma lista fixa, senão o filtro ofereceria status que nunca ocorrem e omitiria
+   um status novo criado no ClickUp. */
+function statusCatalog(tasks){
+  const m=new Map(), colors=new Map();
+  for(const t of tasks){
+    const s=cuStatus(t);
+    if(!s)continue;
+    m.set(s,(m.get(s)||0)+1);
+    if(!colors.get(s)&&cuStatusColor(t))colors.set(s,cuStatusColor(t));
+  }
+  const rank=s=>{
+    const key=STATUS2COL.get(s);
+    if(key)return KCOLS.findIndex(c=>c.key===key);      // 0..4 = ordem das colunas
+    return STATUS_IGNORED.includes(s)?90:91;            // backlog, depois não mapeados
+  };
+  const grp=s=>{
+    const key=STATUS2COL.get(s);
+    if(key)return (KCOLS.find(c=>c.key===key)||{}).label||'';
+    return STATUS_IGNORED.includes(s)?'Fora do quadro (backlog)':'Fora do quadro (status não mapeado)';
+  };
+  return [...m.entries()]
+    .map(([status,n])=>({status,n,group:grp(status),rank:rank(status),color:colors.get(status)||''}))
+    .sort((a,b)=>a.rank-b.rank||a.status.localeCompare(b.status));
+}
+/* state.statuses === null  => todos (estado inicial). Set => só os contidos. */
+function statusAllowed(s){
+  return state.statuses===null || state.statuses.has(s);
+}
+function msLabel(cat){
+  if(state.statuses===null)return `Status: todos (${cat.length})`;
+  const n=cat.filter(o=>state.statuses.has(o.status)).length;
+  return `Status: ${n} de ${cat.length}`;
+}
+function msHtml(cat){
+  const filtering=state.statuses!==null;
+  let opts='',lastGrp=null;
+  for(const o of cat){
+    if(o.group!==lastGrp){opts+=`<div class="ms-grp">${esc(o.group)}</div>`;lastGrp=o.group;}
+    const on=statusAllowed(o.status);
+    const dot=`<span class="kf-dot"${o.color?` style="background:${esc(o.color)}"`:''}></span>`;
+    opts+=`<label class="ms-opt"><input type="checkbox" data-ms-status="${esc(o.status)}"${on?' checked':''}>`
+        +dot+`<span class="nm">${esc(o.status)}</span><span class="ct">${o.n}</span></label>`;
+  }
+  return `<span class="ms">
+    <button class="chip ms-btn${filtering?' on':''}" data-ms-toggle title="Escolher quais status aparecem no quadro">${msLabel(cat)} ▾</button>
+    ${state.msOpen?`<div class="ms-pop">
+      <div class="ms-acts"><button class="ms-link" data-ms-all>Marcar todos</button>
+      <button class="ms-link" data-ms-none>Limpar</button></div>${opts}</div>`:''}
+  </span>`;
+}
+
+/* Quadro vazio SEM erro é o caso mais traiçoeiro: a requisição respondeu, então não há
+   mensagem de erro, e o dado pode estar ali dentro num envelope que não foi reconhecido.
+   Por isso esta caixa mostra o que cada dataset entregou (linhas + formato observado) --
+   é o que transforma "Nenhuma tarefa retornada" em diagnóstico. */
+function emptyBoardBox(){
+  const linhas=(D.cuShapes||[]).map(s=>
+    `<br>· <code>${esc(s.name)}</code>: ${s.error?('ERRO — '+esc(s.error))
+      :`${s.rows} linha(s), formato <b>${esc(s.shape||'?')}</b>`}`).join('');
+  const semLista=(D.cuShapes||[]).some(s=>!s.error&&/sem lista|vazio|string|number/.test(s.shape||''));
+  return stateBox('empty','Nenhuma tarefa retornada',
+    'As consultas responderam, mas nenhuma linha chegou ao quadro. O que cada dataset entregou:'
+    +linhas
+    +(semLista
+      ? '<br><br>O envelope não tem lista dentro — o mais provável é o <code>select: tasks</code> '
+        +'não estar sendo aplicado sem paginação. <b>O que tentar, nesta ordem:</b> (1) remover a '
+        +'linha <code>paginate: false</code> dos blocos; (2) se persistir, voltar ao dataset único '
+        +'<code>clickup_golive_board</code> com <code>paginate: true</code> (custa 7 requisições, '
+        +'mas é o desenho que já funcionou).'
+      : '<br><br>Se todos aparecem com 0 linha(s), confira se a view <code>6-901112863157-2</code> '
+        +'ainda existe e se a chave do ClickUp alcança a lista.'));
+}
+
+/* Barra de filtro do quadro -- mesmo lugar e mesmo peso visual da versão local.
+   Onde a local tem o seletor de data, aqui vai uma etiqueta fixa: reconstruir o quadro
+   num dia passado exige o histórico de status POR TAREFA (uma requisição por tarefa), e
+   cada dataset do portal é uma requisição só, sem encadeamento. Um seletor de data
+   desabilitado, ou pior, um que só filtrasse por `date_updated`, faria o quadro parecer
+   histórico sem ser -- então aqui se declara o que é, em vez de fingir. */
+function boardFiltersHtml(){
+  return `<div class="kfilters">
+    <span class="kf-lbl">Quadro em</span>
+    <span class="kf-static" title="O portal refaz todas as consultas do zero a cada atualização e não guarda histórico; remontar um dia passado exigiria uma chamada de histórico por tarefa, que o portal não consegue encadear. Na versão local do dashboard esse seletor existe.">estado atual · sem histórico por dia</span>
+    <span class="kf-sep"></span>
+    ${msHtml(D.statusCat)}
+  </div>`;
+}
+
+/* ---- legend: what the card footer means (NOT a stage-direction arrow) ---- */
+const LEGEND_ROWS=[
+  {g:'▪',t:'Status no rodapé do cartão',d:'o status atual no ClickUp, com a cor do próprio ClickUp — é por ele que o filtro do quadro recorta. A lista de origem ficou no tooltip do título.'},
+  {g:'●',t:'Ponto verde',d:'a tarefa foi atualizada no ClickUp no dia mais recente do quadro (<code>date_updated</code>).'},
+  {g:'▫',t:'“atualizada dd/mm”',d:'última vez que a tarefa foi tocada — <strong>não</strong> é avanço nem recuo de etapa.'},
+  {g:'✓',t:'“concluída dd/mm hh:mm”',d:'data de conclusão (<code>date_closed</code>, ou <code>date_done</code> para <em>approved by qa - prd</em>).'},
+];
+const PIPELINE=[
+  {step:1,icon:'play',      label:'Tarefa em andamento (início)'},
+  {step:2,icon:'flask',     label:'Validação em ambiente de testes (STG)'},
+  {step:3,icon:'rocket',    label:'Publicação da tarefa em PRD (Deploy)'},
+  {step:4,icon:'clipboard', label:'Testes finais em ambiente real (PRD)'},
+  {step:5,icon:'trophy',    label:'Conclusão da tarefa (etapa final)'},
+];
+function pipelineHtml(steps){
+  return `<div class="pipeline">${steps.map(s=>`
+    <div class="pstep">
+      <div class="pstep-ic" style="background:${s.step<=1?'var(--green)':s.step===2?'var(--blue)':s.step===3?'var(--purple)':s.step===4?'var(--orange)':'var(--gold)'}">${icon(s.icon,15)}</div>
+      <div class="pstep-n">${s.step}</div>
+      <div class="pstep-l">${s.label}</div>
+    </div>`).join('')}</div>`;
+}
+
+/* ============================ TILES (shells + drag to reorder) ============================
+   No localStorage: the portal renders inside a sandboxed iframe, so tile order is
+   session-only and "Ordem padrão" just restores the original arrangement. */
+const TILES=[
+  {id:'site',    title:'Status de cadastramento e vendas do site', cls:'s7'},
+  {id:'sales',   title:'Visão geral de vendas',                    cls:'s5'},
+  {id:'tasks',   title:'Fluxo de tarefas (ClickUp)',               cls:'s7'},
+  {id:'pipeline',title:'Legenda & ordem de execução',              cls:'s5'},
+];
+function buildShells(){
+  const root=document.getElementById('tiles');root.innerHTML='';
+  for(const t of TILES){root.appendChild(el(
+    `<section class="tile ${t.cls}" data-tile="${t.id}"><div class="t-head"><span class="drag-handle" draggable="true" title="Arraste para reordenar">⠿</span><h3>${t.title}</h3><span class="t-head-extra" id="extra-${t.id}"></span></div><div class="t-body" id="body-${t.id}"></div></section>`));}
+  enableDnD(root);
+}
+function enableDnD(root){
+  let dragEl=null;
+  root.addEventListener('dragstart',e=>{const h=e.target.closest('.drag-handle');if(!h)return;
+    dragEl=h.closest('.tile');dragEl.classList.add('dragging');e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',dragEl.dataset.tile);});
+  root.addEventListener('dragend',()=>{if(dragEl)dragEl.classList.remove('dragging');dragEl=null;});
+  root.addEventListener('dragover',e=>{e.preventDefault();const over=e.target.closest('.tile');if(!over||over===dragEl||!dragEl)return;
+    const rc=over.getBoundingClientRect();const after=(e.clientX-rc.left)>rc.width/2;
+    root.insertBefore(dragEl,after?over.nextSibling:over);});
+  root.addEventListener('drop',e=>e.preventDefault());
+}
+
+/* ============================ DATE HELPERS ============================ */
+function ymd(d){return d.toISOString().slice(0,10);}
+function addDays(s,n){const d=new Date(s+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+n);return ymd(d);}
+const minDate=(a,b)=>a<b?a:b, maxDate=(a,b)=>a>b?a:b;
+
+/* ============================ COMPUTE (for the selected day) ============================ */
+function compute(dateStr){
+  const monthStr=dateStr.slice(0,7);
+  const dayOrders=[],monthOrders=[],ytdOrders=[];
+  for(const o of D.orders){
+    const d=o.created_at.slice(0,10);
+    if(d>dateStr)continue;                 // never look past the selected day
+    ytdOrders.push(o);
+    if(d.slice(0,7)===monthStr)monthOrders.push(o);
+    if(d===dateStr)dayOrders.push(o);
+  }
+  const sum=rows=>rows.reduce((a,o)=>a+o.amount,0);
+  let highlight=null;
+  if(dayOrders.length){
+    const top=dayOrders.reduce((a,o)=>o.amount>a.amount?o:a);
+    highlight={increment_id:top.increment_id,amount:top.amount,company_name:top.company_name||null};
+  }
+  /* Companies with a purchase, as of the selected day -- distinct company_id over
+     the same raw orders (day-accurate, unlike a server-side "as of now" count). */
+  const compSet=new Set();
+  for(const o of ytdOrders) if(o.company_id!=null) compSet.add(o.company_id);
+
+  /* 6 months ending at the selected day's month */
+  const months=[];let cur=new Date(dateStr+'T00:00:00Z');cur.setUTCDate(1);
+  for(let i=0;i<6;i++){months.push(ymd(cur).slice(0,7));cur.setUTCDate(0);cur.setUTCDate(1);}
+  months.reverse();
+  const mm=new Map(months.map(m=>[m,{orders:0,revenue:0}]));
+  for(const o of ytdOrders){const m=mm.get(o.created_at.slice(0,7));if(m){m.orders++;m.revenue+=o.amount;}}
+  const monthly=months.map(ym=>({ym,orders:mm.get(ym).orders,revenue:Math.round(mm.get(ym).revenue*100)/100}));
+
+  return{
+    date:dateStr,
+    orders_today:dayOrders.length, revenue_today:Math.round(sum(dayOrders)*100)/100,
+    orders_month:monthOrders.length, revenue_month:Math.round(sum(monthOrders)*100)/100,
+    orders_ytd:ytdOrders.length,
+    companies_first_purchase:compSet.size,
+    highlight_order:highlight,
+    novos_contatos:(D.novosContatos.get(dateStr)!=null?D.novosContatos.get(dateStr):null),
+    monthly,
+  };
+}
+
+/* ============================ PAINT ============================ */
+let D=null;
+function paint(){
+  const set=(id,html)=>{document.getElementById('body-'+id).innerHTML=html;};
+  const k=compute(state.date);
+  const isToday=state.date===D.period.max;
+
+  document.getElementById('extra-site').innerHTML=`<span class="date-pill">${F.dateBR(k.date)}</span>`;
+
+  /* --- Magento error/empty short-circuit for the two data tiles --- */
+  if(D.err.orders){
+    set('site',stateBox('err','Não foi possível carregar os pedidos do Magento',
+      esc(D.err.orders)+'<br>Verifique a conexão do sistema <b>magento</b> no portal (Sistemas → magento).'));
+    set('sales',stateBox('err','Sem dados de vendas',esc(D.err.orders)));
+  }else if(!D.orders.length){
+    set('site',stateBox('empty','Nenhum pedido JEM retornado',
+      'A consulta rodou mas voltou vazia — confira o escopo <code>increment_id LIKE \'%JEM%\'</code> e o período (desde 2026-01-01).'));
+    set('sales',stateBox('empty','Sem dados de vendas','Nenhum pedido retornado.'));
+  }else{
+    const compTotal=D.totals.companies_total;
+    const pctFirst=compTotal?(k.companies_first_purchase/compTotal*100):null;
+    const row3=[
+      kpiCard({icon:'building',color:'teal',label:'Companies',
+        value:F.int(compTotal),na:compTotal==null,naNote:'Totais do Magento indisponíveis',
+        sub:'total atual — sem histórico por dia'}),
+      kpiCard({icon:'people',color:'teal',label:'Contacts',
+        value:F.int(D.totals.contacts_total),na:D.totals.contacts_total==null,naNote:'Totais do Magento indisponíveis',
+        delta:k.novos_contatos,sub:k.novos_contatos!=null?'novos criados neste dia':'sem dado de criação para este dia'}),
+      kpiCard({icon:'cart',color:'teal',label:'Companies com 1ª compra',
+        value:F.int(k.companies_first_purchase),
+        sub:pctFirst!=null?`~${F.pct(pctFirst)} da base · acumulado até o dia`:'acumulado até o dia'}),
+    ].join('');
+    const row4=[
+      kpiCard({icon:'cart',color:'blue',label:isToday?'Pedidos hoje':'Pedidos no dia',value:F.int(k.orders_today)}),
+      kpiCard({icon:'dollar',color:'green',label:isToday?'Faturamento hoje':'Faturamento no dia',value:F.money(k.revenue_today)}),
+      kpiCard({icon:'calendar',color:'blue',label:'Pedidos no mês',value:'~'+F.int(k.orders_month)}),
+      kpiCard({icon:'trend',color:'purple',label:'Pedidos desde janeiro',value:'~'+F.int(k.orders_ytd)}),
+    ].join('');
+    const hl=`<div class="highlight-bar">
+      <div class="hl"><div class="hl-ic">${icon('dollar',17)}</div><div><div class="hl-lbl">Faturamento acumulado ${MON[+k.date.slice(5,7)-1]}/${k.date.slice(2,4)}</div><div class="hl-val">${F.money(k.revenue_month)}</div></div></div>
+      <div class="hl"><div class="hl-ic" style="background:var(--gold)">${icon('star',17)}</div><div><div class="hl-lbl">Pedido destaque do dia</div>
+        ${k.highlight_order?`<div class="hl-val">${F.money(k.highlight_order.amount)} <span style="font-weight:600;color:var(--muted);font-size:11px">(#${esc(k.highlight_order.increment_id)})</span></div><div class="hl-sub">${esc(k.highlight_order.company_name||'—')}</div>`
+        :`<div class="hl-val muted">—</div><div class="hl-sub">Sem pedidos JEM neste dia</div>`}
+      </div></div>`;
+    const gaNote=`<div class="note">Nº de acessos e Taxa de conversão ainda não estão disponíveis — pendente integração com o Google Analytics.</div>`;
+    set('site',`<div class="kpi-row n3">${row3}</div><div class="kpi-row n4">${row4}</div>${hl}${gaNote}`);
+
+    set('sales',`
+      <div class="chart-block"><div class="chart-title">Faturamento · últimos 6 meses</div><div class="chart-wrap" id="cw-revenue"></div></div>
+      <div class="chart-block"><div class="chart-title">Nº de pedidos · últimos 6 meses</div><div class="chart-wrap" id="cw-orders"></div></div>
+      <div class="mini-row">
+        ${kpiCard({icon:'cart',color:'blue',label:'Pedidos no mês',value:'~'+F.int(k.orders_month)})}
+        ${kpiCard({icon:'trend',color:'purple',label:'Pedidos desde janeiro',value:'~'+F.int(k.orders_ytd)})}
+        ${kpiCard({icon:'dollar',color:'green',label:'Faturamento no mês',value:F.money(k.revenue_month)})}
+      </div>`);
+    drawRevenueBar(document.getElementById('cw-revenue'),k.monthly);
+    drawOrdersLine(document.getElementById('cw-orders'),k.monthly);
+  }
+
+  /* --- ClickUp board: ALWAYS the current state, never the selected day --- */
+  /* o filtro de status recorta o quadro; o board é remontado a cada paint a partir
+     das tarefas visíveis, e o rodapé sempre declara quantas foram escondidas */
+  /* o filtro de status recorta os DOIS lados (páginas da view + conclusões); "escondidas"
+     é a diferença de CARTÕES entre o quadro cheio e o filtrado -- contar linhas de dataset
+     inflaria o número com as concluídas que nunca virariam cartão */
+  const visibleView=D.tasks.filter(t=>statusAllowed(cuStatus(t)));
+  const visibleDone=D.doneRows.filter(t=>statusAllowed(cuStatus(t)));
+  const cards=b=>b.cols.reduce((a,c)=>a+c.tasks.length,0);
+  const boardFull=buildBoard(D.tasks,D.doneRows);
+  D.board=buildBoard(visibleView,visibleDone);
+  const hiddenByFilter=cards(boardFull)-cards(D.board);
+  document.getElementById('extra-tasks').innerHTML=
+    `<span class="live-pill">view Board do go-live · estado atual, não histórico</span>`;
+  if(D.err.clickup){
+    set('tasks',clickupErrorBox(D.err.clickup));
+  }else if(!D.tasks.length){
+    set('tasks',emptyBoardBox());
+  }else{
+    set('tasks',boardFiltersHtml()
+      +kanbanHtml(D.board,D.freshDay,D.listNames,hiddenByFilter,boardGuards(D,D.board),D.baseline));
+  }
+
+  set('pipeline',`
+    <div class="legend-rows">${LEGEND_ROWS.map(r=>`<div class="legend-row"><span class="lg">${r.g}</span><span><strong>${r.t}</strong> — ${r.d}</span></div>`).join('')}</div>
+    ${pipelineHtml(PIPELINE)}
+    <div class="note">As setas de avanço/recuo de etapa do report manual não são reproduzíveis aqui: elas exigem o histórico de status por tarefa (<code>time_in_status</code>), uma chamada por tarefa — e cada dataset do portal é uma requisição independente, sem encadeamento.</div>`);
+}
+
+/* ============================ FILTER (day picker) ============================ */
+const state={date:null,statuses:null,msOpen:false};
+function setDate(dateStr){
+  state.date=maxDate(minDate(dateStr,D.period.max),D.period.min);
+  document.getElementById('dayPicker').value=state.date;
+  document.getElementById('btnToday').classList.toggle('active',state.date===D.period.max);
+  document.getElementById('btnYesterday').classList.toggle('active',state.date===addDays(D.period.max,-1));
+  paint();
+}
+function wireFilters(){
+  const p=document.getElementById('dayPicker');p.min=D.period.min;p.max=D.period.max;
+  p.addEventListener('change',e=>setDate(e.target.value));
+  document.getElementById('btnToday').addEventListener('click',()=>setDate(D.period.max));
+  document.getElementById('btnYesterday').addEventListener('click',()=>setDate(addDays(D.period.max,-1)));
+}
+
+/* Eventos do filtro de status: DELEGADOS a partir do container, porque o popup é
+   reconstruído a cada paint (cada clique num checkbox redesenha o quadro). Handler
+   direto no elemento morreria no primeiro clique. */
+function setStatuses(next){
+  /* guarda null quando tudo está marcado -- assim "todos" e "todos marcados à mão"
+     são o mesmo estado e o rótulo/borda do botão não mentem */
+  if(next===null||next.size===D.statusCat.length)state.statuses=null;
+  else state.statuses=next;
+  paint();
+}
+function currentStatusSet(){
+  return state.statuses===null
+    ? new Set(D.statusCat.map(o=>o.status))
+    : new Set(state.statuses);
+}
+function wireStatusFilter(){
+  const root=document.getElementById('tiles');
+  root.addEventListener('click',e=>{
+    if(e.target.closest('[data-ms-toggle]')){state.msOpen=!state.msOpen;paint();return;}
+    if(e.target.closest('[data-ms-all]')){state.msOpen=true;setStatuses(null);return;}
+    if(e.target.closest('[data-ms-none]')){state.msOpen=true;setStatuses(new Set());return;}
+  });
+  root.addEventListener('change',e=>{
+    const cb=e.target.closest('[data-ms-status]');
+    if(!cb)return;
+    const s=cb.getAttribute('data-ms-status');
+    const set=currentStatusSet();
+    if(cb.checked)set.add(s); else set.delete(s);
+    state.msOpen=true;
+    setStatuses(set);
+  });
+  /* clicar fora fecha */
+  document.addEventListener('click',e=>{
+    if(!state.msOpen)return;
+    if(e.target.closest('.ms'))return;
+    state.msOpen=false;paint();
+  });
+}
+
+/* ============================ THEME (claro / escuro) ============================
+   Só troca o atributo data-theme na raiz; todo o resto é variável CSS, então nada
+   precisa ser redesenhado -- inclusive os SVGs, que leem var(--teal)/var(--card)
+   direto no atributo. Sem localStorage (iframe sandbox), a escolha vale para a
+   sessão: recarregar volta ao claro. */
+let theme='light';
+function setTheme(t){
+  theme=(t==='dark')?'dark':'light';
+  const root=document.documentElement||document.body;
+  if(root&&root.setAttribute)root.setAttribute('data-theme',theme);
+  const b=document.getElementById('themeToggle');
+  if(b){
+    b.textContent=(theme==='dark')?'☀ Claro':'☾ Escuro';
+    b.title=(theme==='dark')?'Voltar ao fundo claro (vale para esta sessão)'
+                            :'Usar fundo escuro (vale para esta sessão)';
+  }
+}
+
+/* ============================ SOURCE STATUS PILLS ============================ */
+function srcPills(sets){
+  const byName=new Map(sets.map(s=>[s.name,s]));
+  const groups=[
+    {label:'Magento',names:['mkt_orders','mkt_totais','mkt_novos_contatos']},
+    {label:'ClickUp',names:[...CU_BOARD_SETS,CU_DONE_SET]},
+  ];
+  const html=groups.map(g=>{
+    const parts=g.names.map(n=>byName.get(n)).filter(Boolean);
+    const bad=parts.filter(p=>stateOf(p)==='err');
+    /* timeout é falha transitória: pílula âmbar dizendo "timeout", não vermelha dizendo
+       "erro" -- senão a pílula contradiz a caixa do tile, que manda tentar de novo */
+    const soTimeout=bad.length>0&&bad.every(p=>isTimeoutErr(p.error));
+    const st=bad.length?(soTimeout?'empty':'err'):(parts.every(p=>stateOf(p)==='empty')?'empty':'ok');
+    const rows=parts.reduce((a,p)=>a+p.rows.length,0);
+    const title=parts.map(p=>`${p.name}: ${stateOf(p)==='err'?('ERRO — '+(p.error||''))
+      :p.rows.length+' linhas'+(p.shape?` (formato: ${p.shape})`:'')}`).join('\n');
+    const txt=bad.length?(soTimeout?'timeout':'erro'):(st==='empty'?'vazio':F.int(rows)+' linhas');
+    return `<span class="src ${st}" title="${esc(title)}"><span class="dot"></span>${g.label} · ${txt}</span>`;
+  }).join('');
+  document.getElementById('srcPills').innerHTML=html;
+}
+
+/* ============================ BOOT ============================ */
+function shape(sets){
+  const by=new Map(sets.map(s=>[s.name,s]));
+  const oSet=by.get('mkt_orders'), tSet=by.get('mkt_totais'), nSet=by.get('mkt_novos_contatos');
+  const cuBoardSets=CU_BOARD_SETS.map(n=>by.get(n)||{name:n,rows:[],error:null,meta:null});
+  const cuDoneSet=by.get(CU_DONE_SET)||{name:CU_DONE_SET,rows:[],error:null,meta:null};
+
+  /* MySQL gives decimals/dates as STRING -- coerce before computing/plotting. */
+  const orders=oSet.rows.map(r=>({
+    increment_id:r.increment_id,
+    created_at:String(r.created_at||'').replace('T',' '),
+    amount:Number(r.amount)||0,
+    company_id:(r.company_id==null||r.company_id==='')?null:Number(r.company_id),
+    company_name:r.company_name||null,
+  })).filter(o=>o.created_at).sort((a,b)=>a.created_at<b.created_at?-1:1);
+
+  const t0=tSet.rows[0]||{};
+  const totals={
+    companies_total:t0.companies_total!=null?Number(t0.companies_total):null,
+    contacts_total :t0.contacts_total !=null?Number(t0.contacts_total ):null,
+    db_today:t0.db_today||null, db_now:t0.db_now||null,
+  };
+  const novosContatos=new Map(nSet.rows.map(r=>[String(r.dia).slice(0,10),Number(r.novos)||0]));
+
+  /* "today" = the DB clock (the same clock created_at is stored in); fall back to
+     the newest order date, then to the browser's date. */
+  const lastOrderDay=orders.length?orders[orders.length-1].created_at.slice(0,10):null;
+  const today=totals.db_today||lastOrderDay||ymd(new Date());
+  const firstOrderDay=orders.length?orders[0].created_at.slice(0,10):'2026-01-01';
+  const period={min:minDate('2026-01-01',firstOrderDay),max:maxDate(today,lastOrderDay||today)};
+
+  /* as 2 páginas da view, deduplicadas por id (uma página repetida não pode virar
+     cartão dobrado) */
+  const seenView=new Set(), tasks=[];
+  for(const s of cuBoardSets)for(const t of s.rows){
+    const id=String(t&&t.id||'');
+    if(id&&seenView.has(id))continue;
+    if(id)seenView.add(id);
+    tasks.push(t);
+  }
+  const doneRows=cuDoneSet.rows;
+  const doneOnBoard=doneRows.filter(cuOnBoard);
+  /* ≥100 = o limite de uma página: a consulta voltou truncada e o top 10 fica suspeito */
+  const doneTruncated=doneRows.length>=100;
+
+  /* catálogo do filtro: sai de TODAS as tarefas que alimentam o quadro (as páginas da
+     view + as conclusões que estão no board), não das filtradas -- senão as opções
+     desapareceriam conforme o usuário filtra. Concluídas que vieram nas páginas da view
+     ficam fora: a coluna 5 não sai delas, então contá-las prometeria cartão que não
+     aparece. */
+  const catSeen=new Set(), catRows=[];
+  for(const t of tasks){
+    if(STATUS2COL.get(cuStatus(t))==='done_prd')continue;
+    const id=String(t&&t.id||''); if(id&&catSeen.has(id))continue; if(id)catSeen.add(id);
+    catRows.push(t);
+  }
+  for(const t of doneOnBoard){
+    const id=String(t&&t.id||''); if(id&&catSeen.has(id))continue; if(id)catSeen.add(id);
+    catRows.push(t);
+  }
+  const statusCat=statusCatalog(catRows);
+  /* newest date_updated across the board -- what the green dot marks.
+     Calculado sobre o conjunto COMPLETO de propósito: o "dia mais recente" não deve
+     mudar porque o usuário escondeu um status. */
+  let freshMs=0; for(const t of catRows){const m=cuUpdated(t); if(m&&m>freshMs)freshMs=m;}
+  const freshDay=freshMs?isoDay(freshMs):null;
+  /* de que listas o board é composto -- ele passa da lista-mãe. Os ids alimentam a
+     guarda que detecta lista fora da consulta de conclusões. */
+  const listNames=[...new Set(tasks.map(cuList).filter(Boolean))].sort();
+  const listIdsSeen=[...new Set(tasks.map(cuListId).filter(Boolean))];
+  const listNameById={};
+  for(const t of tasks){const id=cuListId(t); if(id&&!listNameById[id])listNameById[id]=cuList(t);}
+
+  /* erro por dataset: página 0 fora derruba o quadro; página 1 fora degrada (aviso);
+     conclusões fora esvaziam só a coluna 5 */
+  const errOf=s=>s&&s.error?`${s.name}: ${s.error}`:null;
+  const cuErr=errOf(cuBoardSets[0]);
+  const refreshedAt=[oSet,tSet,nSet,...cuBoardSets,cuDoneSet]
+    .map(s=>s&&s.meta&&s.meta.refreshedAt).filter(Boolean).sort().pop()||null;
+
+  /* o que cada dataset do ClickUp entregou -- vai para a tela quando o quadro sai vazio,
+     porque "nenhuma tarefa" sem dizer o que chegou não dá para diagnosticar */
+  const cuShapes=[...cuBoardSets,cuDoneSet].map(s=>({
+    name:s.name,rows:(s.rows||[]).length,shape:s.shape,error:s.error||null}));
+
+  /* base do dia anterior (opcional): ausência não é erro, é "ainda não publicada" */
+  const baseline=readBaseline(by.get(BASELINE_SET));
+  baseline.age=baselineAge(baseline.refDate,period.max);
+  baseline.stale=!!(baseline.ok&&baseline.age!=null&&baseline.age>BASELINE_MAX_AGE_DAYS);
+  baseline.usable=!!(baseline.ok&&!baseline.stale);
+
+  return {orders,totals,novosContatos,tasks,doneRows,doneOnBoard,doneTruncated,cuShapes,baseline,
+    statusCat,board:null,freshDay,listNames,listIdsSeen,listNameById,period,refreshedAt,
+    err:{orders:oSet.error,totals:tSet.error,novos:nSet.error,clickup:cuErr,
+         boardPg1:errOf(cuBoardSets[1]),clickupDone:errOf(cuDoneSet)}};
+}
+
+async function boot(){
+  try{
+    /* a base do dia anterior é carregada junto, mas fora de SETS: se o dataset não estiver
+       declarado no manifesto, o 404 dela NÃO pode contar como falha de fonte -- é o estado
+       normal de hoje ("ainda não publicada"), não um erro para mostrar em pílula vermelha */
+    const [sets,baselineSet]=await Promise.all([
+      Promise.all(SETS.map(loadSet)),
+      loadSet(BASELINE_SET),
+    ]);
+    srcPills(sets);
+    D=shape([...sets,baselineSet]);
+    document.getElementById('refreshedAt').textContent=
+      D.refreshedAt||D.totals.db_now||'—';
+    buildShells();
+    wireFilters();
+    wireStatusFilter();
+    setTheme('light');
+    document.getElementById('themeToggle').addEventListener('click',
+      ()=>setTheme(theme==='dark'?'light':'dark'));
+    document.getElementById('resetLayout').addEventListener('click',()=>{buildShells();paint();});
+    addEventListener('resize',()=>{
+      if(!D||D.err.orders||!D.orders.length)return;
+      const k=compute(state.date);
+      drawRevenueBar(document.getElementById('cw-revenue'),k.monthly);
+      drawOrdersLine(document.getElementById('cw-orders'),k.monthly);
+    });
+    setDate(D.period.max);
+  }catch(e){
+    const b=document.getElementById('bootErr');b.style.display='block';
+    b.innerHTML=`Não foi possível montar o dashboard.<br><small>${esc(e&&e.message||e)}</small>`;
+  }
+}
+if(window.AIDash&&typeof AIDash.ready==='function')AIDash.ready(boot);
+else if(document.readyState==='loading')addEventListener('DOMContentLoaded',boot);
+else boot();
+</script>
+</body>
+</html>

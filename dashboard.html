@@ -1,0 +1,840 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>JEM Marketing Daily Report</title>
+<style>
+  :root{
+    /* site/company identity = teal ; orders & counts = blue ; money = green ;
+       traffic (pending source) = gold ; conversion = orange ; highlight = green */
+    --teal:#0f6e72;   --teal-dk:#0b565a;  --teal-bg:#e6f3f3;
+    --blue:#2a78d6;   --blue-dk:#1c5cab;  --blue-bg:#eaf2fc;
+    --green:#0ca30c;  --green-dk:#087a08; --green-bg:#e8f7e8;
+    --gold:#eda100;   --gold-dk:#c98500;  --gold-bg:#fdf3e0;
+    --orange:#eb6834; --orange-dk:#c94e1e;--orange-bg:#fdece3;
+    --purple:#4a3aa7; --purple-dk:#3a2d85;--purple-bg:#ece9f8;
+    --red:#d03b3b;    --red-dk:#a92e2e;   --red-bg:#fbe9e9;
+    --ink:#1f2a30; --muted:#7a8890; --line:#e3e8eb; --bg:#f4f6f7; --card:#fff;
+    --panel:#fbfcfc;   /* barras de filtro */
+    --card2:#fbfcfc;   /* cartão do kanban */
+    --grid:#eef1f2;    /* linhas de grade dos gráficos */
+    --teal-ln:#cfe3e3; /* bordas da barra de filtros do quadro */
+    --tip:#101e22;     /* fundo do tooltip */
+    --shadow:0 1px 2px rgba(16,40,46,.06),0 2px 8px rgba(16,40,46,.05);
+    color-scheme:light;
+  }
+  /* ---- tema escuro: troca só os tokens, nenhuma regra de layout muda ----
+     Os `-dk` são usados como COR DE TEXTO (rótulo do gráfico, delta, hl-lbl), então no
+     escuro precisam CLAREAR, não escurecer; e os `-bg` (tintas pastel) viram tintas
+     escuras. Mesma escala de acento do portal (já validada lá); os neutros aqui são frios
+     para acompanhar o claro deste dashboard, que é frio -- o do portal é papel quente.
+     Os gráficos leem `var(--teal)`/`var(--card)` direto no atributo do SVG, então
+     acompanham a troca sem precisar redesenhar. `color-scheme` cuida do que é nativo
+     (seletor de data, barras de rolagem), que ficaria branco no escuro. */
+  :root[data-theme="dark"]{
+    --teal:#2aa7ad;   --teal-dk:#7fd7db;  --teal-bg:#10312f;
+    --blue:#4a90e2;   --blue-dk:#9cc7f5;  --blue-bg:#152436;
+    --green:#2fb344;  --green-dk:#86e39a; --green-bg:#122a17;
+    --gold:#e0a72a;   --gold-dk:#f5d68a;  --gold-bg:#31260f;
+    --orange:#ef7a4a; --orange-dk:#f7b295;--orange-bg:#33190f;
+    --purple:#7d6ee0; --purple-dk:#b9aef5;--purple-bg:#1d1836;
+    --red:#e05555;    --red-dk:#f3a0a0;   --red-bg:#331414;
+    --ink:#e6eaec; --muted:#8e999e; --line:#2b3134; --bg:#0f1214; --card:#171b1d;
+    --panel:#141719; --card2:#1c2123; --grid:#252b2e; --teal-ln:#1e4a4c; --tip:#2c3438;
+    --shadow:0 1px 2px rgba(0,0,0,.5),0 2px 10px rgba(0,0,0,.35);
+    color-scheme:dark;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;font-size:13px;line-height:1.4}
+  header{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;
+    padding:12px 18px;background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20}
+  header h1{font-size:16px;margin:0;font-weight:700}
+  header .meta{font-size:12px;color:var(--muted)}
+  header .meta .stale-h{color:var(--red-dk);font-weight:800}
+  /* Aviso de dado parado. O refresh das 22:00 falhou 17 noites seguidas (rede fora da JEM ->
+     timeout no MySQL) e ninguem percebeu por 26 dias, porque a unica pista era a data em
+     texto miudo no cabecalho. Dado velho tem de DOER na tela, nao se esconder. */
+  #staleBar{display:none;padding:10px 18px;background:var(--gold-bg);border-bottom:1px solid var(--gold);
+    color:var(--gold-dk);font-size:12.5px;font-weight:600;text-align:center}
+  #staleBar.show{display:block}
+  #staleBar.bad{background:var(--red-bg);border-bottom-color:var(--red);color:var(--red-dk)}
+  #staleBar .sb-hint{font-weight:500;opacity:.85}
+  .rgroup{display:flex;gap:8px;align-items:center}
+  .chip{padding:6px 11px;border:1px solid var(--line);background:var(--card);border-radius:7px;font-size:12px;cursor:pointer;color:var(--ink)}
+  .chip:hover{border-color:var(--teal);color:var(--teal-dk)}
+  .chip.primary{border-color:var(--teal);color:var(--teal-dk);font-weight:700}
+  .chip.primary:hover{background:var(--teal);color:#fff}
+  .chip[disabled]{opacity:.55;cursor:default}
+  #toast{position:fixed;left:50%;top:14px;transform:translateX(-50%) translateY(-60px);z-index:60;
+    padding:9px 16px;border-radius:9px;font-size:12.5px;font-weight:600;color:#fff;box-shadow:0 6px 20px rgba(0,0,0,.2);
+    opacity:0;transition:opacity .18s,transform .18s;pointer-events:none;max-width:520px}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  /* fundo = a cor FORTE, não a `-dk`: no escuro as `-dk` clareiam (viram cor de texto) e
+     o texto branco do toast sumiria dentro delas */
+  #toast.ok{background:var(--green)} #toast.err{background:var(--orange)}
+  .filters{display:flex;align-items:center;justify-content:center;gap:9px;flex-wrap:wrap;padding:11px 18px;background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:49px;z-index:19}
+  .filters label{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--teal-dk);font-weight:800}
+  .filters input[type=date]{padding:5px 8px;border:1px solid var(--line);border-radius:7px;font-size:12px}
+  .chip.active{background:var(--teal);border-color:var(--teal);color:#fff;font-weight:700}
+  .sep{width:1px;height:20px;background:var(--line);margin:0 4px}
+  main{padding:14px}
+  .tiles{display:grid;grid-template-columns:repeat(12,1fr);gap:12px;max-width:1720px;margin:0 auto;align-items:stretch}
+  .tile{background:var(--card);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);
+    display:flex;flex-direction:column;min-width:0;overflow:hidden}
+  /* o tile do ClickUp não pode cortar o popover de status: com o quadro filtrado até
+     ficar vazio ele é mais alto que o próprio tile. Nada encosta nas bordas (o corpo tem
+     14px de padding), então liberar o overflow não afeta o canto arredondado. */
+  .tile[data-tile="tasks"]{overflow:visible}
+  .t-head{display:flex;align-items:center;gap:8px;padding:11px 14px 0}
+  .t-head h3{margin:0;font-size:12.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--ink);font-weight:700;flex:1;min-width:0}
+  .t-head-extra{display:flex;align-items:center;gap:6px}
+  .t-head .date-pill{font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:20px;padding:3px 10px;white-space:nowrap}
+  .t-head .badge-pending{font-size:10px;color:var(--gold-dk);background:var(--gold-bg);border-radius:20px;padding:3px 9px;white-space:nowrap;font-weight:700}
+  .drag-handle{cursor:grab;color:var(--muted);opacity:.5;font-size:13px;line-height:1;user-select:none;padding:2px}
+  .drag-handle:active{cursor:grabbing}
+  .tile.dragging{opacity:.45;outline:2px dashed var(--teal)}
+  .t-body{padding:12px 14px 14px;flex:1;min-width:0;display:flex;flex-direction:column;gap:14px}
+  .s5{grid-column:span 5}.s7{grid-column:span 7}.s12{grid-column:span 12}
+  @media(max-width:1280px){.s5,.s7{grid-column:span 12}}
+
+  /* ---- KPI icon cards ---- */
+  .kpi-row{display:grid;gap:10px}
+  .kpi-row.n3{grid-template-columns:repeat(3,1fr)}
+  .kpi-row.n4{grid-template-columns:repeat(4,1fr)}
+  .kpi-row.n2{grid-template-columns:repeat(2,1fr)}
+  @media(max-width:640px){.kpi-row.n3,.kpi-row.n4{grid-template-columns:repeat(2,1fr)}}
+  .kpi{display:flex;gap:10px;align-items:flex-start;padding:10px;border:1px solid var(--line);border-radius:9px;min-width:0}
+  .kpi-ic{width:36px;height:36px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center}
+  .kpi-ic svg{width:18px;height:18px}
+  .kpi-txt{min-width:0}
+  .kpi-lbl{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;line-height:1.3}
+  .kpi-val{font-size:19px;font-weight:800;line-height:1.25;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .kpi-val.muted{color:var(--muted);font-weight:700;font-size:16px}
+  .kpi-sub{font-size:10px;color:var(--muted);margin-top:1px}
+  .delta{font-weight:700;font-size:11px;margin-left:6px}
+  .delta.up{color:var(--green-dk)} .delta.down{color:var(--red-dk)} .delta.flat{color:var(--muted)}
+
+  .highlight-bar{background:var(--green-bg);border-radius:10px;padding:13px 16px;display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:640px){.highlight-bar{grid-template-columns:1fr}}
+  .hl{display:flex;gap:10px;align-items:flex-start;min-width:0}
+  .hl-ic{width:34px;height:34px;border-radius:50%;background:var(--green);flex:none;display:flex;align-items:center;justify-content:center}
+  .hl-ic svg{width:17px;height:17px}
+  .hl-lbl{font-size:10.5px;color:var(--teal-dk);text-transform:uppercase;letter-spacing:.4px;font-weight:700}
+  .hl-val{font-size:19px;font-weight:800;color:var(--ink)}
+  .hl-sub{font-size:11px;color:var(--muted);margin-top:1px}
+
+  /* ---- charts ---- */
+  .chart-block{min-width:0}
+  .chart-title{font-size:11px;color:var(--muted);font-weight:700;margin-bottom:4px}
+  .chart-wrap{width:100%;min-width:0}
+  svg{display:block} svg text{font-family:inherit}
+  .gridline{stroke:var(--grid);stroke-width:1}.axis{stroke:var(--line);stroke-width:1}
+  .axis-lbl{fill:var(--muted);font-size:10px}
+  .val-lbl{fill:var(--teal-dk);font-size:10px;font-weight:700}
+  .bar-hover{cursor:pointer}.bar-hover:hover{filter:brightness(1.08)}
+  #tip{position:fixed;pointer-events:none;z-index:50;background:var(--tip);color:#fff;border-radius:7px;padding:7px 9px;
+    font-size:11.5px;line-height:1.5;box-shadow:0 4px 14px rgba(0,0,0,.25);opacity:0;transition:opacity .08s;max-width:220px}
+  #tip b{color:#fff} #tip .g{color:#7fe3a1}
+  .mini-row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  @media(max-width:640px){.mini-row{grid-template-columns:1fr}}
+
+  /* ---- filtros do quadro (data + status), dentro do tile do ClickUp ----
+     Barra centralizada e destacada em teal: é um filtro de verdade (remonta o quadro),
+     não um enfeite do cabeçalho -- tem de ser a primeira coisa que se vê no tile. */
+  .kfilters{display:flex;align-items:center;justify-content:center;gap:9px;flex-wrap:wrap;
+    padding:11px 14px;background:var(--teal-bg);border:1px solid var(--teal-ln);border-radius:10px}
+  .kf-lbl{font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--teal-dk);font-weight:800}
+  .kf-sep{width:1px;height:22px;background:var(--teal-ln);margin:0 5px}
+  .kfilters .chip{background:var(--card)}
+  .kfilters .chip.active,.kfilters .chip.primary:hover{background:var(--teal);color:#fff}
+  .chip.sm{padding:5px 11px;font-size:12px;border-radius:7px}
+  .kfilters input[type=date]{padding:5px 8px;border:1px solid var(--teal-ln);border-radius:7px;font-size:12px;color:var(--ink);background:var(--card)}
+  .kf-wrap{position:relative}
+  .kf-pop{position:absolute;left:50%;transform:translateX(-50%);top:calc(100% + 8px);z-index:30;
+    width:min(300px,86vw);background:var(--card);
+    border:1px solid var(--line);border-radius:9px;box-shadow:0 8px 24px rgba(16,40,46,.16);padding:8px}
+  .kf-pop[hidden]{display:none}
+  .kf-pop-head{display:flex;gap:8px;align-items:center;padding:2px 4px 7px;border-bottom:1px solid var(--line);margin-bottom:6px}
+  .kf-pop-head .kf-lbl{flex:1}
+  .lnk{background:none;border:0;padding:0;font:inherit;font-size:11px;font-weight:700;color:var(--teal-dk);cursor:pointer;text-decoration:underline}
+  .kf-pop-body{max-height:280px;overflow-y:auto}
+  .kf-grp{font-size:9.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:700;margin:7px 4px 3px}
+  .kf-opt{display:flex;align-items:center;gap:7px;padding:3px 5px;border-radius:6px;font-size:11.5px;cursor:pointer}
+  .kf-opt:hover{background:var(--bg)}
+  .kf-opt input{margin:0;cursor:pointer}
+  .kf-opt .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .kf-opt .ct{font-size:10px;font-weight:700;color:var(--muted)}
+  .kf-opt.off{opacity:.6;cursor:default}
+  .kf-opt.off:hover{background:none}
+  .kf-dot{width:8px;height:8px;border-radius:50%;flex:none;background:var(--muted)}
+  .kf-note{font-size:10px;color:var(--muted);padding:6px 4px 1px;border-top:1px solid var(--line);margin-top:6px;line-height:1.35}
+  .kf-pill{font-size:10px;font-weight:700;border-radius:20px;padding:2px 8px;white-space:nowrap;
+    color:var(--gold-dk);background:var(--gold-bg)}
+
+  /* ---- kanban ---- */
+  .kanban{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;align-items:start}
+  @media(max-width:1100px){.kanban{grid-template-columns:repeat(2,1fr)}}
+  .kcol{min-width:0;display:flex;flex-direction:column}
+  .kcol-head{display:flex;align-items:center;gap:7px;margin-bottom:8px}
+  .kcol-ic{width:24px;height:24px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center}
+  .kcol-ic svg{width:12px;height:12px}
+  .kcol-lbl{font-size:11px;font-weight:700;line-height:1.25;flex:1;min-width:0}
+  .kcol-count{font-size:10px;font-weight:700;color:var(--muted);background:var(--bg);border:1px solid var(--line);border-radius:20px;padding:1px 7px}
+  .kcol-scroll{overflow-y:auto;max-height:520px;padding-right:2px}
+  .kcard{border:1px solid var(--line);border-radius:8px;padding:8px 9px;margin-bottom:8px;font-size:11.5px;background:var(--card2)}
+  .kcard-title{line-height:1.35}
+  .kcard-foot{display:flex;align-items:center;gap:6px;justify-content:space-between;margin-top:6px;padding-top:5px;border-top:1px solid var(--line)}
+  .kcard-st{display:flex;align-items:center;gap:5px;min-width:0;font-size:9.5px;color:var(--muted);font-weight:600;
+    text-transform:uppercase;letter-spacing:.3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .kcard-date{font-size:10px;color:var(--muted);font-weight:600;white-space:nowrap}
+  .kcard.unsure{border-style:dashed;border-color:var(--gold);background:var(--gold-bg)}
+  .trend{font-weight:800;font-size:12px}
+  .trend.up{color:var(--green-dk)} .trend.down{color:var(--red-dk)} .trend.same{color:var(--muted)}
+  .trend.unsure{color:var(--gold-dk);cursor:help}
+
+  /* ---- legend + pipeline ---- */
+  .legend-rows{display:flex;flex-direction:column;gap:8px}
+  .legend-row{display:flex;gap:8px;align-items:flex-start;font-size:11.5px;color:var(--ink)}
+  .legend-row b{font-size:13px;line-height:1}
+  .legend-row span{color:var(--muted)}
+  .pipeline{display:flex;align-items:flex-start;justify-content:space-between;gap:4px;margin-top:4px}
+  .pstep{display:flex;flex-direction:column;align-items:center;text-align:center;flex:1;min-width:0;position:relative}
+  .pstep:not(:last-child)::after{content:'';position:absolute;top:17px;left:58%;width:84%;border-top:2px dashed var(--line)}
+  .pstep-ic{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin-bottom:6px;position:relative;z-index:1}
+  .pstep-ic svg{width:16px;height:16px}
+  .pstep-n{font-size:10px;color:var(--muted);font-weight:700}
+  .pstep-l{font-size:10px;color:var(--ink);line-height:1.3;margin-top:2px}
+
+  .pending-note{font-size:10.5px;color:var(--muted);border-top:1px solid var(--line);padding-top:8px;margin-top:2px}
+  .err{padding:40px;text-align:center;color:var(--orange-dk)}
+</style>
+<script>
+/* Aplica o tema ANTES do primeiro paint -- se esperasse o script principal lá embaixo,
+   quem escolheu escuro veria um flash branco a cada carga. */
+try{var t=localStorage.getItem('jem-mktdaily-theme');
+    if(t==='dark'||t==='light')document.documentElement.setAttribute('data-theme',t);}catch(e){}
+</script>
+</head>
+<body>
+<header>
+  <h1>JEM Marketing Daily Report</h1>
+  <div class="meta">Last execution: <strong id="lastExec">—</strong> (Phoenix) · Hours since: <strong id="hoursExec">—</strong></div>
+  <div class="rgroup">
+    <button class="chip" id="themeToggle" title="Alternar entre tema claro e escuro">☾ Escuro</button>
+    <button class="chip primary" id="refreshData" title="Re-query Magento for fresh data (requires the local server: python serve.py)">⟳ Refresh data</button>
+    <button class="chip" id="resetLayout" title="Restore default tile arrangement">⟲ Reset layout</button>
+  </div>
+</header>
+
+<div id="staleBar"></div>
+
+<div class="filters">
+  <label>Dia do relatório</label>
+  <button class="chip" id="btnToday">Hoje</button>
+  <button class="chip" id="btnYesterday">Ontem</button>
+  <span class="sep"></span>
+  <input type="date" id="dayPicker">
+</div>
+
+<main><div class="tiles" id="tiles"></div><div class="err" id="bootErr" style="display:none"></div></main>
+<div id="tip"></div>
+<div id="toast"></div>
+
+<script src="data.js" onerror="window.__noDataJs=true"></script>
+<script>
+"use strict";
+const MON=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+const F={
+  int:n=>n==null?'—':Number(n).toLocaleString('en-US'),
+  money:n=>n==null?'—':Number(n).toLocaleString('en-US',{style:'currency',currency:'USD',minimumFractionDigits:2,maximumFractionDigits:2}),
+  moneyK:n=>{const a=Math.abs(n);return a>=1e6?'$'+(n/1e6).toFixed(2)+'M':a>=1e3?'$'+Math.round(n/1e3)+'K':'$'+Math.round(n);},
+  pct:n=>n==null?'—':Number(n).toFixed(2)+'%',
+  dateBR:s=>{if(!s)return'—';const[y,m,d]=s.split('-');return `${d} de ${['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'][+m-1]} de ${y}`;},
+};
+function el(h){const t=document.createElement('template');t.innerHTML=h.trim();return t.content.firstChild;}
+/* títulos e status vêm do ClickUp (texto livre) e entram em innerHTML/atributos */
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function deltaChip(v,suffix){
+  if(v==null)return `<span class="delta flat">—</span>`;
+  const cls=v>0?'up':v<0?'down':'flat', sign=v>0?'+':'';
+  return `<span class="delta ${cls}">${sign}${v}${suffix||''}</span>`;
+}
+
+const TIP=document.getElementById('tip');
+function showTip(html,e){TIP.innerHTML=html;TIP.style.opacity='1';moveTip(e);}
+function moveTip(e){const w=TIP.offsetWidth,vw=innerWidth;let x=e.clientX+14;if(x+w>vw-8)x=e.clientX-w-14;TIP.style.left=x+'px';TIP.style.top=(e.clientY+14)+'px';}
+function hideTip(){TIP.style.opacity='0';}
+
+/* ============================ ICONS (inline SVG, white glyph) ============================ */
+const ICONS={
+  building:'<path d="M4 20V5a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v15M14 20V9a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v11M4 20h16M7 7h1M10 7h1M7 10h1M10 10h1M7 13h1M10 13h1M17 12h1M17 15h1" stroke="#fff" stroke-width="1.6" fill="none" stroke-linecap="round"/>',
+  people:'<circle cx="9" cy="8" r="3" fill="#fff"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6" stroke="#fff" stroke-width="1.6" fill="none" stroke-linecap="round"/><circle cx="17" cy="9" r="2.4" fill="none" stroke="#fff" stroke-width="1.5"/><path d="M15.2 14.3c2.6.3 4.6 2.5 4.8 5.7" stroke="#fff" stroke-width="1.5" fill="none" stroke-linecap="round"/>',
+  cart:'<circle cx="9" cy="20" r="1.3" fill="#fff"/><circle cx="17" cy="20" r="1.3" fill="#fff"/><path d="M3 4h2l2.2 11.2a1.5 1.5 0 0 0 1.5 1.3h8.6a1.5 1.5 0 0 0 1.5-1.2L20.5 8H6" stroke="#fff" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
+  dollar:'<path d="M12 3v18M16.5 7.5c0-1.7-2-3-4.5-3s-4.5 1.2-4.5 3 2 2.6 4.5 3 4.5 1.3 4.5 3-2 3-4.5 3-4.5-1.3-4.5-3" stroke="#fff" stroke-width="1.7" fill="none" stroke-linecap="round"/>',
+  calendar:'<rect x="4" y="5.5" width="16" height="14.5" rx="2" fill="none" stroke="#fff" stroke-width="1.6"/><path d="M4 10h16M8 3v4M16 3v4" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/>',
+  trend:'<path d="M4 16l5-5 4 3 7-8" stroke="#fff" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M15 6h5v5" stroke="#fff" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
+  cursor:'<path d="M6 3l13 7.7-6 1.4-1.4 6L6 3z" fill="#fff"/>',
+  funnel:'<path d="M4 5h16l-6 8v6l-4-2v-4L4 5z" fill="#fff"/>',
+  star:'<path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.2 1 5.9L12 17l-5.2 2.8 1-5.9-4.3-4.2 5.9-.8L12 3.5z" fill="#fff"/>',
+  play:'<path d="M8 5.5v13l11-6.5-11-6.5z" fill="#fff"/>',
+  clock:'<circle cx="12" cy="12" r="8.2" fill="none" stroke="#fff" stroke-width="1.6"/><path d="M12 7.5V12l3.2 2" stroke="#fff" stroke-width="1.6" fill="none" stroke-linecap="round"/>',
+  rocket:'<path d="M12 2.5c3 1.6 4.8 4.7 4.8 8.6 0 2-.5 3.6-1.2 5l-3.6 3-3.6-3c-.7-1.4-1.2-3-1.2-5 0-3.9 1.8-7 4.8-8.6z" fill="#fff"/><circle cx="12" cy="10.5" r="1.6" fill="var(--purple)"/><path d="M8.6 16.5l-2.4 4M15.4 16.5l2.4 4" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/>',
+  clipboard:'<rect x="5.5" y="4.5" width="13" height="16" rx="1.6" fill="none" stroke="#fff" stroke-width="1.5"/><rect x="9" y="3" width="6" height="3" rx="1" fill="#fff"/><path d="M8.5 12l2.3 2.3L15.5 10" stroke="#fff" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
+  trophy:'<path d="M7 4h10v4a5 5 0 0 1-10 0V4z" fill="#fff"/><path d="M7 5H4v1.5A3.5 3.5 0 0 0 7 10M17 5h3v1.5A3.5 3.5 0 0 1 17 10" stroke="#fff" stroke-width="1.4" fill="none"/><path d="M10 15.5h4v2h-4z" fill="#fff"/><path d="M8 20.5h8" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/><path d="M12 17.5v1" stroke="#fff" stroke-width="1.6"/>',
+};
+function icon(name,size){return `<svg viewBox="0 0 24 24" width="${size||18}" height="${size||18}">${ICONS[name]||''}</svg>`;}
+const COLVAR={teal:'var(--teal)',blue:'var(--blue)',green:'var(--green)',gold:'var(--gold)',orange:'var(--orange)',purple:'var(--purple)'};
+
+/* ============================ KPI CARD BUILDERS ============================ */
+function kpiCard(o){
+  const pending=o.pending;
+  return `<div class="kpi">
+    <div class="kpi-ic" style="background:${COLVAR[o.color]}">${icon(o.icon)}</div>
+    <div class="kpi-txt">
+      <div class="kpi-lbl">${o.label}</div>
+      <div class="kpi-val ${pending?'muted':''}">${pending?'—':o.value}${o.delta!==undefined?deltaChip(o.delta,o.deltaSuffix):''}</div>
+      <div class="kpi-sub">${pending?(o.pendingNote||'Fonte pendente (GA4/analytics)'):(o.sub||'')}</div>
+    </div>
+  </div>`;
+}
+
+/* ============================ CHARTS ============================ */
+function drawRevenueBar(container,rows){
+  const W=520,H=190,L=44,R=10,T=26,B=26,iw=W-L-R,ih=H-T-B;
+  const max=Math.max(1,...rows.map(r=>r.revenue))*1.12;
+  const slot=iw/rows.length, bw=Math.min(24,slot*0.55);
+  const x=i=>L+(i+0.5)*slot, y=v=>T+ih-(v/max)*ih;
+  let g='';for(let t=0;t<=3;t++){const yy=T+ih-t/3*ih;g+=`<line class="gridline" x1="${L}" y1="${yy}" x2="${W-R}" y2="${yy}"/>`;}
+  let bars='',lab='',xl='';
+  rows.forEach((r,i)=>{const yy=y(r.revenue),h=T+ih-yy;
+    bars+=`<rect data-i="${i}" class="bar-hover" x="${(x(i)-bw/2).toFixed(1)}" y="${yy.toFixed(1)}" width="${bw}" height="${Math.max(0,h).toFixed(1)}" rx="4" fill="var(--teal)"/>`;
+    lab+=`<text class="val-lbl" x="${x(i)}" y="${(yy-6).toFixed(1)}" text-anchor="middle">${F.moneyK(r.revenue)}</text>`;
+    xl+=`<text class="axis-lbl" x="${x(i)}" y="${H-B+15}" text-anchor="middle">${MON[+r.ym.slice(5,7)-1]}/${r.ym.slice(2,4)}</text>`;});
+  container.innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="xMidYMid meet" style="height:auto">
+    ${g}${bars}${lab}<line class="axis" x1="${L}" y1="${T+ih}" x2="${W-R}" y2="${T+ih}"/>${xl}</svg>`;
+  container.querySelectorAll('rect[data-i]').forEach(rc=>{const r=rows[+rc.dataset.i];
+    rc.addEventListener('mousemove',e=>showTip(`<b>${MON[+r.ym.slice(5,7)-1]}/${r.ym.slice(0,4)}</b><br><span class="g">Faturamento: ${F.money(r.revenue)}</span><br>Pedidos: ${F.int(r.orders)}`,e));
+    rc.addEventListener('mouseleave',hideTip);});
+}
+function drawOrdersLine(container,rows){
+  const W=520,H=190,L=34,R=14,T=26,B=26,iw=W-L-R,ih=H-T-B;
+  const n=rows.length,vals=rows.map(r=>r.orders),max=Math.max(1,...vals)*1.15,min=Math.min(...vals)*0.9;
+  const x=i=>L+(n<=1?iw/2:i*(iw/(n-1))), y=v=>T+ih-((v-min)/(max-min||1))*ih;
+  let g='';for(let t=0;t<=3;t++){const yy=T+ih-t/3*ih;g+=`<line class="gridline" x1="${L}" y1="${yy}" x2="${W-R}" y2="${yy}"/>`;}
+  const pts=rows.map((r,i)=>`${x(i).toFixed(1)},${y(r.orders).toFixed(1)}`).join(' ');
+  let dots='',lab='',xl='',hits='';
+  const bw=iw/Math.max(n,1);
+  rows.forEach((r,i)=>{
+    dots+=`<circle cx="${x(i).toFixed(1)}" cy="${y(r.orders).toFixed(1)}" r="4.5" fill="var(--teal)" stroke="var(--card)" stroke-width="2"/>`;
+    lab+=`<text class="val-lbl" x="${x(i).toFixed(1)}" y="${(y(r.orders)-10).toFixed(1)}" text-anchor="middle">${F.int(r.orders)}</text>`;
+    xl+=`<text class="axis-lbl" x="${x(i).toFixed(1)}" y="${H-B+15}" text-anchor="middle">${MON[+r.ym.slice(5,7)-1]}/${r.ym.slice(2,4)}</text>`;
+    hits+=`<rect data-i="${i}" x="${(x(i)-bw/2).toFixed(1)}" y="${T}" width="${bw.toFixed(1)}" height="${ih}" fill="transparent"/>`;});
+  container.innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="xMidYMid meet" style="height:auto">
+    ${g}<polyline points="${pts}" fill="none" stroke="var(--teal)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>${dots}${lab}
+    <line class="axis" x1="${L}" y1="${T+ih}" x2="${W-R}" y2="${T+ih}"/>${xl}${hits}</svg>`;
+  container.querySelectorAll('rect[data-i]').forEach(rc=>{const r=rows[+rc.dataset.i];
+    rc.addEventListener('mousemove',e=>showTip(`<b>${MON[+r.ym.slice(5,7)-1]}/${r.ym.slice(0,4)}</b><br>Pedidos: ${F.int(r.orders)}<br><span class="g">Faturamento: ${F.money(r.revenue)}</span>`,e));
+    rc.addEventListener('mouseleave',hideTip);});
+}
+
+/* ============================ KANBAN + PIPELINE ============================ */
+/* 'new' = a tarefa não existia no quadro no fechamento de ontem, então NÃO há base de
+   comparação. Desenhar '=' aqui afirmaria "não se moveu", o que não sabemos -- por isso
+   ela recebe um marcador próprio. */
+function trendGlyph(t){return t==='up'?'▲':t==='down'?'▼':t==='new'?'novo':t==='unsure'?'?':'=';}
+function trendTitle(t){return t==='up'?'Avanço de etapa':t==='down'?'Recuo de etapa'
+  :t==='new'?'Entrou no quadro neste dia — sem etapa anterior para comparar'
+  :t==='unsure'?'Etapa incerta nesta data':'Mesma etapa';}
+/* ---- fuso ----------------------------------------------------------------------
+   America/Phoenix é UTC-7 o ano todo (não tem horário de verão), então o deslocamento
+   é fixo e dá para formatar epoch em hora de Phoenix sem biblioteca -- e, principalmente,
+   SEM depender do fuso do navegador (aqui é UTC-3: à noite ele jogaria uma mudança de
+   status para o dia seguinte e a tarefa apareceria no dia errado do quadro). */
+const PHX_MS=7*3600*1000;
+function phxDayEnd(dateStr){return Date.parse(dateStr+'T23:59:59-07:00');}
+function phxIso(ms){return new Date(ms-PHX_MS).toISOString();}
+function phxStamp(ms){const s=phxIso(ms);return `${s.slice(8,10)}/${s.slice(5,7)} ${s.slice(11,16)}`;}
+function dm(dateStr){return dateStr.slice(8,10)+'/'+dateStr.slice(5,7);}
+
+/* ---- modelo do quadro ------------------------------------------------------------
+   `D.tasks.items` traz as tarefas cruas + o histórico de status de cada uma, então o
+   quadro de QUALQUER dia da janela é remontado aqui, sem consultar o ClickUp -- mesma
+   ideia do `orders` do Magento. As origens antigas (snapshot manual / cópia estática)
+   trazem as colunas já montadas e sem histórico: nesse caso os filtros não têm o que
+   fazer e a barra some, em vez de fingir que filtra. */
+let BOARD=null;
+function buildBoardModel(){
+  const T=D.tasks||{};
+  const defs=(T.columns||[]).map(c=>({key:c.key,label:c.label,icon:c.icon,color:c.color}));
+  const ord={};defs.forEach((c,i)=>{ord[c.key]=i+1;});
+  const statusCol={},statusColor={};
+  for(const[name,m]of Object.entries(T.statuses||{})){statusCol[name]=m.col||null;statusColor[name]=m.color||null;}
+  const live=Array.isArray(T.items);
+  const legacy=live?null:defs.map(c=>({def:c,cards:((T.columns||[]).find(x=>x.key===c.key)||{}).tasks||[]}));
+  BOARD={live,defs,ord,statusCol,statusColor,
+    items:T.items||[],doneKey:T.done_key||'done_prd',topN:T.done_top_n||10,
+    minDate:T.history_from||T.as_of,maxDate:T.as_of,legacy};
+}
+function statusAtRows(hist,ms){
+  let best=null;
+  for(const r of hist){if(r.ms<=ms&&(!best||r.ms>best.ms))best=r;}
+  return best;
+}
+/* Distribui as tarefas nas 5 colunas para a data escolhida. A coluna de uma tarefa no
+   dia T é o status com o `since` mais recente <= 23:59:59 de T (Phoenix); a seta compara
+   esse resultado com o mesmo cálculo no fechamento do dia anterior. Para hoje isso
+   reproduz exatamente o quadro que o `build_data.py` já montava. */
+function computeBoard(dateStr){
+  const M=BOARD, end=phxDayEnd(dateStr), prevEnd=phxDayEnd(addDays(dateStr,-1));
+  const isToday=dateStr>=M.maxDate;
+  const counts=new Map(), off=new Map(); let unknown=0, unsureN=0;
+  const cards=[];
+  for(const it of M.items){
+    let s=null,ms=null;
+    if(it.hist&&it.hist.length){const at=statusAtRows(it.hist,end);if(at){s=at.s;ms=at.ms;}}
+    else if(it.completed_ms!=null&&it.completed_ms<=end){s=it.status;ms=it.completed_ms;}
+    else if(isToday){s=it.status;ms=it.updated_ms;}
+    if(s==null){unknown++;continue;}                       // não existia / sem status conhecido nessa data
+    const col=M.statusCol[s]||null;
+    if(!col){off.set(s,(off.get(s)||0)+1);continue;}        // backlog / status fora do mapa
+    counts.set(s,(counts.get(s)||0)+1);
+    // trilha com visitas escondidas antes deste instante -> a etapa reconstruída pode não
+    // ser a real, então o cartão sai marcado com "?" em vez de exibir uma seta inventada
+    const unsure=it.unsure_before!=null&&end<it.unsure_before;
+    let trend=null;
+    if(col!==M.doneKey&&!unsure){
+      const p=it.hist?statusAtRows(it.hist,prevEnd):null;
+      const pcol=p?(M.statusCol[p.s]||null):null;
+      trend=!pcol?'new':(M.ord[col]>M.ord[pcol]?'up':M.ord[col]<M.ord[pcol]?'down':'same');
+    }
+    if(unsure)unsureN++;
+    cards.push({title:it.title,url:it.url,status:s,col,since:ms,trend,unsure});
+  }
+  const sel=board.sel;
+  let hidden=0;
+  const byCol=new Map(M.defs.map(c=>[c.key,[]]));
+  for(const c of cards){
+    if(sel&&!sel.has(c.status)){hidden++;continue;}
+    (byCol.get(c.col)||[]).push(c);
+  }
+  for(const arr of byCol.values())arr.sort((a,b)=>(b.since||0)-(a.since||0));
+  const doneAll=byCol.get(M.doneKey)||[];
+  const doneShown=doneAll.slice(0,M.topN);
+  byCol.set(M.doneKey,doneShown);
+  return {date:dateStr,isToday,byCol,counts,off,unknown,hidden,unsure:unsureN,
+    doneTotal:doneAll.length,shown:cards.length-hidden};
+}
+
+function cardFoot(c){
+  const dot=BOARD.statusColor[c.status]?`<span class="kf-dot" style="background:${esc(BOARD.statusColor[c.status])}"></span>`:'';
+  const st=`<span class="kcard-st" title="Status no ClickUp: ${esc(c.status)}">${dot}${esc(c.status)}</span>`;
+  const right=c.unsure
+    ? `<span class="trend unsure" title="Etapa incerta nesta data: esta tarefa repetiu status e o ClickUp guarda só a última entrada em cada um, então em ${dm(lastBoard.date)} ela pode ter estado em outra etapa. Sem base confiável, o quadro não mostra seta.">?</span>`
+    : c.trend===null
+    ? `<span class="kcard-date" title="Entrou nesta etapa em ${phxStamp(c.since)} (Phoenix)">${phxStamp(c.since)}</span>`
+    : `<span class="trend ${c.trend}" title="${trendTitle(c.trend)}">${trendGlyph(c.trend)}</span>`;
+  return `<div class="kcard-foot">${st}${right}</div>`;
+}
+function legacyFoot(t){
+  if(t.completed_at)return `<div class="kcard-foot"><span class="kcard-st"></span><span class="kcard-date">${t.completed_at}</span></div>`;
+  return `<div class="kcard-foot"><span class="kcard-st"></span><span class="trend ${t.trend}" title="${trendTitle(t.trend)}">${trendGlyph(t.trend)}</span></div>`;
+}
+function kanbanHtml(colsWithCards,footFn){
+  return `<div class="kanban">${colsWithCards.map(({def,cards})=>`
+    <div class="kcol">
+      <div class="kcol-head"><div class="kcol-ic" style="background:${COLVAR[def.color]||'var(--muted)'}">${icon(def.icon,12)}</div><div class="kcol-lbl">${def.label}</div><span class="kcol-count">${cards.length}</span></div>
+      <div class="kcol-scroll">${cards.length?cards.map(c=>`<div class="kcard${c.unsure?' unsure':''}"><div class="kcard-title">${esc(c.title)}</div>${footFn(c)}</div>`).join('')
+        :`<div class="kcard" style="color:var(--muted);text-align:center;background:none;border-style:dashed">—</div>`}</div>
+    </div>`).join('')}</div>`;
+}
+
+/* ---- barra de filtros do quadro (data + status) ---- */
+function boardShellHtml(){
+  const bar=BOARD.live?`
+  <div class="kfilters">
+    <span class="kf-lbl">Quadro em</span>
+    <button class="chip sm" id="kbToday">Hoje</button>
+    <button class="chip sm" id="kbYest">Ontem</button>
+    <input type="date" id="kbDate" min="${BOARD.minDate}" max="${BOARD.maxDate}"
+      title="Remonta o quadro para o dia escolhido (a partir de ${BOARD.minDate})">
+    <span class="kf-sep"></span>
+    <div class="kf-wrap">
+      <button class="chip sm" id="kbStatus" aria-expanded="false" title="Filtrar por status do ClickUp">Status: todos ▾</button>
+      <div class="kf-pop" id="kbPop" hidden></div>
+    </div>
+  </div>`:'';
+  return `${bar}<div id="kboard"></div><div class="pending-note" id="kfoot"></div>`;
+}
+function statusPopHtml(b){
+  const opt=(s,n,off)=>`<label class="kf-opt${off?' off':''}"${off?' title="Status não mapeado em nenhuma das 5 etapas"':''}>
+      <input type="checkbox" data-st="${esc(s)}"${off?' disabled':((!board.sel||board.sel.has(s))?' checked':'')}>
+      <span class="kf-dot" style="background:${BOARD.statusColor[s]||'var(--muted)'}"></span>
+      <span class="nm">${esc(s)}</span><span class="ct">${n}</span></label>`;
+  const groups=BOARD.defs
+    .map(d=>({label:d.label,rows:[...b.counts].filter(([s])=>BOARD.statusCol[s]===d.key).sort((a,c)=>c[1]-a[1])}))
+    .filter(g=>g.rows.length);
+  const off=[...b.off].sort((a,c)=>c[1]-a[1]);
+  return `<div class="kf-pop-head"><span class="kf-lbl">Status em ${dm(b.date)}</span>
+      <button class="lnk" data-st-all>Todos</button><button class="lnk" data-st-none>Limpar</button></div>
+    <div class="kf-pop-body">
+      ${groups.map(g=>`<div class="kf-grp">${g.label}</div>${g.rows.map(([s,n])=>opt(s,n,false)).join('')}`).join('')
+        ||`<div class="kf-grp">Nenhuma tarefa no quadro nesta data</div>`}
+      ${off.length?`<div class="kf-grp">Fora do quadro</div>${off.map(([s,n])=>opt(s,n,true)).join('')}`:''}
+    </div>
+    ${off.length?`<div class="kf-note">“Fora do quadro” = status que o report não mapeia em nenhuma das 5 etapas (ex.: <i>backlog</i>). Ficam listados só para você saber que existem.</div>`:''}`;
+}
+
+/* Origem do quadro -- sempre na tela, para dado velho nunca passar por dado ao vivo. */
+function boardSourceNote(){
+  const T=D.tasks,st=T.stats||{};
+  if(T.source==='clickup_live_api')
+    return `Espelha a view <b>Board</b> do go-live (${T.view||''}) — quem entra no quadro é a view, não um critério deste dashboard.`
+      +` Reúne: ${(T.lists||[]).join(' · ')}. Puxado ao vivo da API em ${T.as_of}`
+      +`${st.tasks_in_view?` · ${st.tasks_in_view} tarefas na view, ${st.history_calls||0} históricos consultados`:''}.`
+      +(st.tasks_without_history?`<br>⚠ ${st.tasks_without_history} tarefa(s) sem histórico no ClickUp — ficaram sem seta.`:'');
+  if(T.source==='clickup_live_mcp_pull')
+    return `Puxado do ClickUp (${(T.lists||[]).join(' + ')}) em ${T.as_of} · tendência vs. ${T.trend_cutoff||'dia anterior'} — <b>snapshot manual antigo</b>, não é a API ao vivo.`;
+  return `Quadro copiado do report de referência (${T.as_of}) — <b>não</b> é dado ao vivo do ClickUp.`;
+}
+
+/* ---- desenho + eventos do quadro ---- */
+let lastBoard=null;
+function renderBoard(){
+  const host=document.getElementById('kboard'), foot=document.getElementById('kfoot'),
+        extra=document.getElementById('extra-tasks');
+  if(!host)return;
+  if(!BOARD.live){
+    host.innerHTML=kanbanHtml(BOARD.legacy,legacyFoot);
+    foot.innerHTML=boardSourceNote()
+      +`<br>Esta origem não traz histórico de status, então os filtros de data e de status do quadro não aparecem — filtrar sem histórico só daria a impressão de que o quadro mudou.`;
+    if(extra)extra.innerHTML='';
+    return;
+  }
+  const b=lastBoard=computeBoard(board.date);
+  host.innerHTML=kanbanHtml(BOARD.defs.map(d=>({def:d,cards:b.byCol.get(d.key)||[]})),cardFoot);
+  document.getElementById('kbPop').innerHTML=statusPopHtml(b);
+  const nsel=board.sel?[...b.counts.keys()].filter(s=>board.sel.has(s)).length:b.counts.size;
+  document.getElementById('kbStatus').textContent=
+    (board.sel?`Status: ${nsel} de ${b.counts.size}`:'Status: todos')+' ▾';
+  document.getElementById('kbStatus').classList.toggle('primary',!!board.sel);
+  if(extra)extra.innerHTML=`<span class="date-pill">quadro em ${dm(b.date)}</span>`
+    +(b.isToday?'':`<span class="kf-pill" title="Etapas reconstruídas a partir do histórico de status do ClickUp">reconstruído</span>`);
+
+  const n=[boardSourceNote()];
+  n.push(b.isToday
+    ? `Estado atual · setas comparam com o fechamento de ontem (${D.tasks.trend_cutoff||'23:59:59 Phoenix'}).`
+    : `<b>Quadro remontado para ${F.dateBR(b.date)}</b> a partir do histórico de status do ClickUp — cada tarefa aparece na etapa em que estava às 23:59 (Phoenix) daquele dia, e a seta compara com o fechamento do dia anterior.`
+      +` ⚠ O ClickUp guarda só a <b>última</b> entrada em cada status: idas e voltas repetidas ao mesmo status ficam invisíveis, então quanto mais antiga a data, maior a chance de uma tarefa aparecer numa etapa anterior à real.`
+      +` Só entram tarefas que estão <b>hoje</b> na view — quem saiu da view depois daquele dia não aparece.`);
+  if(board.date!==state.date)
+    n.push(state.date<BOARD.minDate
+      ? `⚠ O filtro do topo está em ${dm(state.date)}, mas o quadro só reconstrói a partir de ${dm(BOARD.minDate)} (histórico limitado a ${D.tasks.history_window_days||60} dias) — mostrando ${dm(board.date)}.`
+      : `O quadro está em ${dm(board.date)}, diferente do dia do relatório (${dm(state.date)}) — os números do site acima continuam seguindo o filtro do topo.`);
+  if(b.unsure)n.push(`⚠ ${b.unsure} tarefa(s) marcada(s) com <b>?</b>: repetiram status depois de ${dm(b.date)}, então a etapa mostrada é a melhor estimativa e não recebe seta.`);
+  if(b.unknown)n.push(`${b.unknown} tarefa(s) da view sem status conhecido em ${dm(b.date)} (criadas depois dessa data, ou sem histórico) — ficaram fora do quadro.`);
+  if(b.off.size)n.push(`⚠ Fora do quadro por status não mapeado: ${[...b.off].map(([s,c])=>`<b>${esc(s)}</b> (${c})`).join(', ')}.`);
+  if(board.sel)n.push(`Filtro de status ativo: ${b.hidden} tarefa(s) ocultas, ${b.shown} exibida(s).`);
+  if(b.doneTotal>BOARD.topN)n.push(`Conclusões: as ${BOARD.topN} mais recentes de ${b.doneTotal} concluídas até ${dm(b.date)}.`);
+  foot.innerHTML=n.join('<br>');
+}
+function clampBoard(d){return maxDate(minDate(d,BOARD.maxDate),BOARD.minDate);}
+function syncBoardChips(){
+  const t=document.getElementById('kbToday'),y=document.getElementById('kbYest'),p=document.getElementById('kbDate');
+  if(!t)return;
+  t.classList.toggle('active',board.date===BOARD.maxDate);
+  y.classList.toggle('active',board.date===addDays(BOARD.maxDate,-1));
+  p.value=board.date;
+}
+function setBoardDate(d){board.date=clampBoard(d);syncBoardChips();renderBoard();updateQS();}
+function wireBoard(){
+  if(!BOARD.live)return;
+  document.getElementById('kbDate').addEventListener('change',e=>setBoardDate(e.target.value));
+  document.getElementById('kbToday').addEventListener('click',()=>setBoardDate(BOARD.maxDate));
+  document.getElementById('kbYest').addEventListener('click',()=>setBoardDate(addDays(BOARD.maxDate,-1)));
+  const btn=document.getElementById('kbStatus'),pop=document.getElementById('kbPop');
+  btn.addEventListener('click',e=>{e.stopPropagation();pop.hidden=!pop.hidden;btn.setAttribute('aria-expanded',String(!pop.hidden));});
+  pop.addEventListener('click',e=>{
+    e.stopPropagation();
+    if(e.target.matches('[data-st-all]'))setStatuses(null);
+    else if(e.target.matches('[data-st-none]'))setStatuses(new Set());
+  });
+  pop.addEventListener('change',e=>{
+    const cb=e.target.closest('input[data-st]');if(!cb)return;
+    const all=[...lastBoard.counts.keys()];
+    const sel=board.sel?new Set(board.sel):new Set(all);
+    cb.checked?sel.add(cb.dataset.st):sel.delete(cb.dataset.st);
+    setStatuses(all.every(s=>sel.has(s))?null:sel);   // tudo marcado == sem filtro
+  });
+  syncBoardChips();
+}
+function setStatuses(sel){board.sel=sel;renderBoard();updateQS();}
+function pipelineHtml(steps){
+  return `<div class="pipeline">${steps.map(s=>`
+    <div class="pstep">
+      <div class="pstep-ic" style="background:${s.step<=1?'var(--green)':s.step===2?'var(--blue)':s.step===3?'var(--purple)':s.step===4?'var(--orange)':'var(--gold)'}">${icon(s.icon,15)}</div>
+      <div class="pstep-n">${s.step}</div>
+      <div class="pstep-l">${s.label}</div>
+    </div>`).join('')}</div>`;
+}
+const LEGEND_ROWS=[
+  {g:'up',t:'Avanço de etapa',d:'(mediante finalização e/ou validação)'},
+  {g:'down',t:'Recuo de etapa',d:'(mediante necessidade de melhoria e/ou revalidação)'},
+  {g:'same',t:'Mesma etapa',d:'(mediante tempo de desenvolvimento, repriorização e/ou dependência externa)'},
+  {g:'unsure',t:'Etapa incerta',d:'(só em datas passadas: a tarefa repetiu status e o ClickUp guarda apenas a última entrada em cada um)'},
+];
+
+/* ============================ TILES (shells + DnD) ============================ */
+const LS_KEY='jem-mktdaily-layout-v1';
+const TILES=[
+  {id:'site',title:'Status de cadastramento e vendas do site',cls:'s7'},
+  {id:'sales',title:'Visão geral de vendas',cls:'s5'},
+  {id:'tasks',title:'Fluxo de tarefas (ClickUp)',cls:'s7'},
+  {id:'pipeline',title:'Legenda & ordem de execução',cls:'s5'},
+];
+function buildShells(){
+  const root=document.getElementById('tiles');root.innerHTML='';
+  for(const t of TILES){root.appendChild(el(
+    `<section class="tile ${t.cls}" data-tile="${t.id}"><div class="t-head"><span class="drag-handle" draggable="true" title="Drag to reorder">⠿</span><h3>${t.title}</h3><span class="t-head-extra" id="extra-${t.id}"></span></div><div class="t-body" id="body-${t.id}"></div></section>`));}
+  applyLayout(); enableDnD(root);
+}
+function applyLayout(){
+  const root=document.getElementById('tiles');let order;
+  try{order=JSON.parse(localStorage.getItem(LS_KEY)||'null');}catch(e){order=null;}
+  if(!order)return;
+  order.filter(id=>root.querySelector(`[data-tile="${id}"]`)).forEach(id=>root.appendChild(root.querySelector(`[data-tile="${id}"]`)));
+}
+function saveLayout(){const root=document.getElementById('tiles');
+  localStorage.setItem(LS_KEY,JSON.stringify([...root.children].map(c=>c.dataset.tile)));}
+function enableDnD(root){
+  let dragEl=null;
+  root.addEventListener('dragstart',e=>{const h=e.target.closest('.drag-handle');if(!h){return;}
+    dragEl=h.closest('.tile');dragEl.classList.add('dragging');e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',dragEl.dataset.tile);});
+  root.addEventListener('dragend',()=>{if(dragEl)dragEl.classList.remove('dragging');dragEl=null;});
+  root.addEventListener('dragover',e=>{e.preventDefault();const over=e.target.closest('.tile');if(!over||over===dragEl||!dragEl)return;
+    const rc=over.getBoundingClientRect();const after=(e.clientX-rc.left)>rc.width/2;
+    root.insertBefore(dragEl,after?over.nextSibling:over);});
+  root.addEventListener('drop',e=>{e.preventDefault();saveLayout();});
+}
+
+/* ============================ DATE HELPERS ============================ */
+function ymd(d){return d.toISOString().slice(0,10);}
+function addDays(s,n){const d=new Date(s+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+n);return ymd(d);}
+const minDate=(a,b)=>a<b?a:b, maxDate=(a,b)=>a>b?a:b;
+
+/* ============================ COMPUTE (for the selected day) ============================ */
+function compute(dateStr){
+  const monthStr=dateStr.slice(0,7);
+  const dayOrders=[], monthOrders=[], ytdOrders=[];
+  for(const o of D.orders){
+    const d=o.created_at.slice(0,10);
+    if(d>dateStr)continue;                 // never look past the selected day
+    ytdOrders.push(o);
+    if(d.slice(0,7)===monthStr)monthOrders.push(o);
+    if(d===dateStr)dayOrders.push(o);
+  }
+  const sum=rows=>rows.reduce((a,o)=>a+o.amount,0);
+  let highlight=null;
+  if(dayOrders.length){
+    const top=dayOrders.reduce((a,o)=>o.amount>a.amount?o:a);
+    highlight={increment_id:top.increment_id,amount:top.amount,company_name:D.company_map[String(top.customer_id)]||null};
+  }
+  // 6 months ending at the selected day's month, aggregated from the same raw orders
+  const months=[]; let cur=new Date(dateStr+'T00:00:00Z'); cur.setUTCDate(1);
+  for(let i=0;i<6;i++){months.push(ymd(cur).slice(0,7)); cur.setUTCDate(0); cur.setUTCDate(1);}
+  months.reverse();
+  const mm=new Map(months.map(m=>[m,{orders:0,revenue:0}]));
+  for(const o of ytdOrders){const ym=o.created_at.slice(0,7); const m=mm.get(ym); if(m){m.orders++; m.revenue+=o.amount;}}
+  const monthly=months.map(ym=>({ym,orders:mm.get(ym).orders,revenue:Math.round(mm.get(ym).revenue*100)/100}));
+
+  // Companies/Contacts/1st-purchase snapshot -- only real for dates we've captured in history.json
+  const snap=D.history[dateStr]||null;
+  const prevSnap=D.history[addDays(dateStr,-1)]||null;
+  const snapDelta=key=>(snap&&prevSnap&&prevSnap[key]!=null)?Math.round((snap[key]-prevSnap[key])*100)/100:null;
+
+  return{
+    date:dateStr,
+    orders_today:dayOrders.length, revenue_today:Math.round(sum(dayOrders)*100)/100,
+    orders_month:monthOrders.length, revenue_month:Math.round(sum(monthOrders)*100)/100,
+    orders_ytd:ytdOrders.length,
+    highlight_order:highlight,
+    monthly,
+    snap, snapDelta,
+  };
+}
+
+/* ============================ PAINT ============================ */
+let D=null;
+function paint(){
+  const set=(id,html)=>{document.getElementById('body-'+id).innerHTML=html;};
+  const k=compute(state.date);
+  const snap=k.snap;
+
+  document.getElementById('extra-site').innerHTML=`<span class="date-pill">${F.dateBR(k.date)}</span>`;
+
+  const noSnapNote='Sem captura para este dia';
+  const row3=[
+    kpiCard({icon:'building',color:'teal',label:'Companies',value:snap?F.int(snap.companies_total):'—',
+      pending:!snap,pendingNote:noSnapNote,delta:snap?k.snapDelta('companies_total'):undefined}),
+    kpiCard({icon:'people',color:'teal',label:'Contacts',value:snap?F.int(snap.contacts_total):'—',
+      pending:!snap,pendingNote:noSnapNote,delta:snap?k.snapDelta('contacts_total'):undefined}),
+    kpiCard({icon:'cart',color:'teal',label:'Companies com 1ª compra',value:snap?F.int(snap.companies_first_purchase_count):'—',
+      pending:!snap,pendingNote:noSnapNote,sub:snap?`~${F.pct(snap.pct_first_purchase)}`:'',delta:snap?k.snapDelta('pct_first_purchase'):undefined,deltaSuffix:' p.p.'}),
+  ].join('');
+  const row4=[
+    kpiCard({icon:'cart',color:'blue',label:'Pedidos hoje',value:F.int(k.orders_today)}),
+    kpiCard({icon:'dollar',color:'green',label:'Faturamento hoje',value:F.money(k.revenue_today)}),
+    kpiCard({icon:'calendar',color:'blue',label:'Pedidos no mês',value:'~'+F.int(k.orders_month)}),
+    kpiCard({icon:'trend',color:'purple',label:'Pedidos desde janeiro',value:'~'+F.int(k.orders_ytd)}),
+  ].join('');
+  const hl=`<div class="highlight-bar">
+    <div class="hl"><div class="hl-ic">${icon('dollar',17)}</div><div><div class="hl-lbl">Faturamento acumulado ${MON[+k.date.slice(5,7)-1]}/${k.date.slice(2,4)}</div><div class="hl-val">${F.money(k.revenue_month)}</div></div></div>
+    <div class="hl"><div class="hl-ic" style="background:var(--gold)">${icon('star',17)}</div><div><div class="hl-lbl">Pedido destaque do dia</div>
+      ${k.highlight_order?`<div class="hl-val">${F.money(k.highlight_order.amount)} <span style="font-weight:600;color:var(--muted);font-size:11px">(#${k.highlight_order.increment_id})</span></div><div class="hl-sub">${k.highlight_order.company_name||'—'}</div>`
+      :`<div class="hl-val muted">—</div><div class="hl-sub">Sem pedidos JEM neste dia</div>`}
+    </div></div>`;
+  const gaNote=`<div class="pending-note">Nº de acessos e Taxa de conversão ainda não estão disponíveis — pendente integração com o Google Analytics.</div>`;
+  set('site',`<div class="kpi-row n3">${row3}</div><div class="kpi-row n4">${row4}</div>${hl}${gaNote}`);
+
+  set('sales',`
+    <div class="chart-block"><div class="chart-title">Faturamento · últimos 6 meses</div><div class="chart-wrap" id="cw-revenue"></div></div>
+    <div class="chart-block"><div class="chart-title">Nº de pedidos · últimos 6 meses</div><div class="chart-wrap" id="cw-orders"></div></div>
+    <div class="mini-row">
+      ${kpiCard({icon:'cart',color:'blue',label:'Pedidos no mês',value:'~'+F.int(k.orders_month)})}
+      ${kpiCard({icon:'trend',color:'purple',label:'Pedidos desde janeiro',value:'~'+F.int(k.orders_ytd)})}
+      ${kpiCard({icon:'dollar',color:'green',label:'Faturamento no mês',value:F.money(k.revenue_month)})}
+    </div>`);
+  drawRevenueBar(document.getElementById('cw-revenue'),k.monthly);
+  drawOrdersLine(document.getElementById('cw-orders'),k.monthly);
+
+  set('tasks',boardShellHtml());
+  renderBoard();
+  wireBoard();
+
+  set('pipeline',`
+    <div class="legend-rows">${LEGEND_ROWS.map(r=>`<div class="legend-row"><b class="trend ${r.g}">${trendGlyph(r.g)}</b><span><strong style="color:var(--ink)">${r.t}</strong> ${r.d}</span></div>`).join('')}</div>
+    ${pipelineHtml(D.tasks.pipeline)}`);
+}
+
+/* ============================ FILTERS ============================
+   Dois níveis: o seletor do topo manda no dashboard inteiro (KPIs, gráficos e quadro);
+   o seletor dentro do tile do ClickUp ajusta SÓ o quadro. Mudar o de cima realinha o de
+   baixo -- quem quer ver o quadro num dia diferente dos KPIs muda só o do tile. */
+const state={date:null};
+const board={date:null,sel:null};   // sel = null significa "todos os status"
+function updateQS(){
+  const qs=new URLSearchParams(location.search);
+  state.date===D.period.max?qs.delete('date'):qs.set('date',state.date);
+  (!BOARD||!BOARD.live||board.date===clampBoard(state.date))?qs.delete('board'):qs.set('board',board.date);
+  board.sel?qs.set('st',[...board.sel].join('~')):qs.delete('st');
+  history.replaceState(null,'',location.pathname+(qs.toString()?'?'+qs:''));
+}
+function setDate(dateStr){
+  state.date=maxDate(minDate(dateStr,D.period.max),D.period.min);
+  document.getElementById('dayPicker').value=state.date;
+  document.getElementById('btnToday').classList.toggle('active',state.date===D.period.max);
+  document.getElementById('btnYesterday').classList.toggle('active',state.date===addDays(D.period.max,-1));
+  if(BOARD&&BOARD.live)board.date=clampBoard(state.date);
+  updateQS();
+  paint();
+}
+function wireFilters(){
+  const p=document.getElementById('dayPicker'); p.min=D.period.min; p.max=D.period.max;
+  p.addEventListener('change',e=>setDate(e.target.value));
+  document.getElementById('btnToday').addEventListener('click',()=>setDate(D.period.max));
+  document.getElementById('btnYesterday').addEventListener('click',()=>setDate(addDays(D.period.max,-1)));
+  // clique fora fecha o seletor de status (registrado UMA vez, não a cada repintura)
+  document.addEventListener('click',()=>{const pop=document.getElementById('kbPop');
+    if(pop&&!pop.hidden){pop.hidden=true;document.getElementById('kbStatus').setAttribute('aria-expanded','false');}});
+}
+
+/* ============================ TEMA (claro/escuro) ============================
+   Só troca o atributo `data-theme` na raiz: todo o resto do CSS é variável, e os SVGs
+   dos gráficos leem `var(--teal)`/`var(--card)` no próprio atributo, então nada precisa
+   ser redesenhado. A escolha fica no localStorage (aqui existe, diferente do portal, que
+   roda em iframe sandbox e por isso esquece a cada refresh). */
+const LS_THEME='jem-mktdaily-theme';
+function currentTheme(){return document.documentElement.getAttribute('data-theme')==='dark'?'dark':'light';}
+function setTheme(t,persist){
+  document.documentElement.setAttribute('data-theme',t);
+  const b=document.getElementById('themeToggle');
+  if(b)b.textContent=t==='dark'?'☀ Claro':'☾ Escuro';
+  if(persist){try{localStorage.setItem(LS_THEME,t);}catch(e){}}
+}
+
+/* ============================ TIMES + REFRESH ============================ */
+/* Acima de STALE_WARN horas sem refresh o dado nao e mais "de hoje": o job roda 3x ao dia,
+   entao passar de ~28h significa que TODAS as tentativas de um dia falharam. STALE_BAD = ja
+   perdeu mais de dois dias. */
+const STALE_WARN=28, STALE_BAD=48;
+function setHours(){
+  if(!D||!D.last_execution)return;
+  const t=new Date(D.last_execution.replace(' ','T')+'-07:00');
+  const h=Math.max(0,Math.floor((Date.now()-t.getTime())/3600000));
+  const a=document.getElementById('hoursExec');
+  if(a){a.textContent=F.int(h); a.className=h>=STALE_WARN?'stale-h':'';}
+  const bar=document.getElementById('staleBar');
+  if(bar){
+    if(h<STALE_WARN){ bar.className=''; bar.textContent=''; }
+    else{
+      const dias=Math.floor(h/24);
+      bar.className='show'+(h>=STALE_BAD?' bad':'');
+      bar.innerHTML='⚠ Dados do Magento parados há <strong>'+F.int(h)+'h</strong>'
+        +(dias>=1?' (~'+F.int(dias)+' dia'+(dias>1?'s':'')+')':'')
+        +' — último refresh em '+D.last_execution+' (Phoenix). '
+        +'<span class="sb-hint">O refresh só alcança o banco do Magento pela rede da JEM; '
+        +'confira o <code>refresh.log</code> e rode <code>python build_data.py</code> estando na rede.</span>';
+    }
+  }
+}
+function updateHeaderTimes(){document.getElementById('lastExec').textContent=D.last_execution||'—';setHours();}
+function toast(msg,ok){const e=document.getElementById('toast');e.textContent=msg;e.className='show '+(ok?'ok':'err');
+  clearTimeout(e._t);e._t=setTimeout(()=>{e.className='';},ok?3500:7000);}
+async function refreshData(btn){
+  const orig=btn.textContent; btn.disabled=true; btn.textContent='⟳ Refreshing…';
+  const wasOnToday=state.date===D.period.max;
+  try{
+    const res=await fetch('api/refresh',{cache:'no-store'});
+    if(!res.ok){let j={};try{j=await res.json();}catch(e){} throw new Error(j.error||('HTTP '+res.status));}
+    D=await res.json();
+    buildBoardModel();          // o quadro veio junto (view + históricos), remonta o modelo
+    updateHeaderTimes();
+    document.getElementById('dayPicker').min=D.period.min; document.getElementById('dayPicker').max=D.period.max;
+    setDate(wasOnToday?D.period.max:state.date);
+    toast('Data refreshed · '+D.last_execution+' (Phoenix)',true);
+  }catch(e){
+    toast(e instanceof TypeError ? 'Refresh needs the local server. Run:  python serve.py  (or python ../server.py)  then reopen this dashboard from http://localhost:8765/'
+                                 : 'Refresh failed: '+e.message, false);
+  }finally{ btn.disabled=false; btn.textContent=orig; }
+}
+
+/* ============================ BOOT ============================ */
+function init(data){
+  D=data;
+  buildBoardModel();
+  updateHeaderTimes();
+  buildShells();
+  wireFilters();
+  setTheme(currentTheme(),false);   // rótulo do botão de acordo com o que o <head> aplicou
+  document.getElementById('themeToggle').addEventListener('click',
+    ()=>setTheme(currentTheme()==='dark'?'light':'dark',true));
+  document.getElementById('refreshData').addEventListener('click',e=>refreshData(e.currentTarget));
+  document.getElementById('resetLayout').addEventListener('click',()=>{localStorage.removeItem(LS_KEY);buildShells();paint();});
+  setInterval(setHours,60000);
+  addEventListener('resize',()=>{const k=compute(state.date);drawRevenueBar(document.getElementById('cw-revenue'),k.monthly);drawOrdersLine(document.getElementById('cw-orders'),k.monthly);});
+  // deep link: ?date= (dashboard todo) · ?board= (só o quadro) · ?st= (status, separados por ~)
+  const qs=new URLSearchParams(location.search);
+  const qd=qs.get('date'), qb=qs.get('board'), qst=qs.get('st');
+  setDate(qd&&qd>=D.period.min&&qd<=D.period.max?qd:D.period.max);
+  if(BOARD.live&&(qb||qst!=null)){
+    if(qst!=null)board.sel=new Set(qst.split('~').filter(Boolean));
+    setBoardDate(qb||board.date);
+  }
+}
+(window.DASHBOARD_DATA?Promise.resolve(window.DASHBOARD_DATA):fetch('data.json').then(r=>{if(!r.ok)throw new Error(r.status);return r.json();}))
+  .then(init).catch(e=>{const b=document.getElementById('bootErr');b.style.display='block';
+    b.innerHTML=`Could not load data. Run <b>python build_data.py</b> first, then reload.<br><small>${e}</small>`;});
+</script>
+</body>
+</html>
