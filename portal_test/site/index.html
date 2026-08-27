@@ -22,6 +22,7 @@
     --grid:#ece7db;    /* linhas de grade dos gráficos */
     --teal-ln:#cfe3e3; /* bordas da barra de filtro do quadro */
     --shadow:0 1px 2px rgba(16,40,46,.06),0 2px 8px rgba(16,40,46,.05);
+    color-scheme:light;   /* o que é nativo: seletor de data, barra de rolagem, caixa de busca */
   }
   /* ---- tema escuro: só troca tokens, nenhuma regra de layout muda ----
      Os `-dk` são usados como COR DE TEXTO (rótulo do gráfico, delta, hl-lbl), então no
@@ -39,6 +40,7 @@
     --ink:#e9e7e1; --muted:#9b978c; --line:#33322d; --bg:#100f0e; --card:#1a1917;
     --panel:#171614; --card2:#201f1c; --grid:#2b2a26; --teal-ln:#1e4a4c;
     --shadow:0 1px 2px rgba(0,0,0,.5),0 2px 10px rgba(0,0,0,.35);
+    color-scheme:dark;
   }
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--ink);
@@ -160,6 +162,21 @@
   .kf-static{font-size:11.5px;color:var(--ink);background:var(--card);border:1px solid var(--teal-ln);
     border-radius:7px;padding:5px 11px;cursor:help}
   .kfilters .chip{background:var(--card)}
+  /* busca por texto: mesma altura e mesma tinta dos chips, para ler como parte da barra */
+  .kf-search{position:relative;display:inline-flex;align-items:center}
+  .kf-input{font:inherit;font-size:12px;padding:5px 11px;width:min(210px,52vw);
+    color:var(--ink);background:var(--card);border:1px solid var(--teal-ln);border-radius:7px;
+    outline:none}
+  .kf-input::placeholder{color:var(--muted)}
+  .kf-input:focus{border-color:var(--teal);box-shadow:0 0 0 2px var(--teal-bg)}
+  .kf-input:not(:placeholder-shown){border-color:var(--teal);font-weight:600}
+  /* o X nativo do type=search não existe em todo navegador -- este é o nosso */
+  .kf-input::-webkit-search-cancel-button{display:none}
+  .kf-clear{position:absolute;right:5px;top:50%;transform:translateY(-50%);
+    width:18px;height:18px;line-height:1;display:flex;align-items:center;justify-content:center;
+    background:none;border:0;padding:0;cursor:pointer;color:var(--muted);font-size:15px;
+    border-radius:4px}
+  .kf-clear:hover{color:var(--ink);background:var(--teal-bg)}
 
   /* ---- filtro de status (múltipla escolha) ---- */
   .ms{position:relative;display:inline-block}
@@ -350,7 +367,38 @@ function stateBox(kind,title,detail){
 function isTimeoutErr(msg){
   return /timeout|timed?\s*out|aborted|ETIMEDOUT|ECONNRESET|deadline|504/i.test(String(msg||''));
 }
+/* 401/403 é DEFINITIVO: o ClickUp recusou a credencial. Não é a view, não é o manifesto,
+   não é lentidão -- e por isso não deve cair na caixa genérica de "causas possíveis, em
+   ordem", que manda conferir quatro coisas quando o servidor já disse qual é.
+   Aconteceu em 27/08/2026: os 3 datasets voltaram
+   `HTTP 401: {"err":"Token invalid","ECODE":"OAUTH_025"}`. */
+function isAuthErr(msg){
+  return /\b401\b|\b403\b|token invalid|invalid[_ ]token|OAUTH_0|unauthorized|forbidden/i
+    .test(String(msg||''));
+}
 function clickupErrorBox(msg){
+  if(isAuthErr(msg))
+    return stateBox('err','A chave do ClickUp foi recusada (401)',
+      '<b style="display:inline">Erro retornado:</b> '+esc(msg)
+      +'<br><b style="display:inline">O ClickUp recusou a credencial</b> — '
+      +'<code>OAUTH_025 / Token invalid</code> é o código dele para chave inválida ou revogada. '
+      +'Não é a view, não é o manifesto e não é lentidão: a consulta chegou ao ClickUp e ele '
+      +'respondeu <code>401</code>.'
+      +'<br><b style="display:inline">O que fazer, nesta ordem:</b>'
+      +'<br>1. Em <b>Sistemas → ClickUp</b>, ver <b>de quem</b> é a chave em uso. Este dashboard '
+      +'declara <code>credentials: shared</code>, então o portal usa a chave <b>de equipe</b> — '
+      +'uma conexão pessoal válida não substitui a compartilhada se ela estiver revogada.'
+      +'<br>2. Gerar outra em <b>app.clickup.com/settings/apps</b> (API Token → Generate) e '
+      +'cadastrar. ⚠ Gerar uma nova <b>invalida a anterior</b> — é a explicação mais comum de '
+      +'uma chave que funcionava parar de funcionar sozinha.'
+      +'<br>3. Colar <b>inteira</b>: começa com <code>pk_</code>, sem espaço nem quebra de linha '
+      +'(chave truncada devolve exatamente este erro).'
+      +'<br>4. Se a mesma chave funciona em outra ferramenta e só aqui não, o conector pode estar '
+      +'mandando <code>Bearer &lt;chave&gt;</code>: token pessoal do ClickUp vai <b>cru</b> no '
+      +'cabeçalho <code>Authorization</code>. Aí o ajuste é na plataforma, não aqui.'
+      +'<br>⚠ A contagem de linhas que aparece ao lado do erro no painel de datasets é a da '
+      +'<b>última execução que deu certo</b>, não desta — 401 não devolve linha nenhuma.'
+      +'<br>Os números do site acima não dependem do ClickUp e continuam válidos.');
   if(isTimeoutErr(msg))
     return stateBox('empty','O ClickUp não respondeu em tempo',
       '<b style="display:inline">Erro retornado:</b> '+esc(msg)
@@ -637,7 +685,18 @@ function kanbanHtml(board,freshDay,listNames,hiddenByFilter,guards,baseline){
         ||'<div class="kcard" style="color:var(--muted);text-align:center;background:none;border-style:dashed">—</div>'}</div>
     </div>`).join('');
   const notes=[];
-  if(hiddenByFilter)notes.push(`<span class="hid">Filtro de status ativo: ${hiddenByFilter} tarefa(s) escondida(s) do quadro.</span> O quadro abaixo NÃO é o total — limpe o filtro para ver tudo.`);
+  /* o aviso tem de nomear QUAL filtro está recortando: "escondidas" sem dizer por quê
+     manda procurar no lugar errado (e agora são dois filtros, status e busca).
+     A frase do caso "só status" é preservada palavra por palavra -- é a que o harness
+     afirma desde 29/07, e mudar wording de aviso não deveria mexer no que um teste diz. */
+  if(hiddenByFilter){
+    const porStatus=state.statuses!==null, q=(state.q||'').trim();
+    const label=(porStatus&&q)?`Filtro de status + busca “${esc(q)}” ativos`
+              :q?`Busca “${esc(q)}” ativa`
+              :`Filtro de status ativo`;
+    notes.push(`<span class="hid">${label}: ${hiddenByFilter} tarefa(s) escondida(s) do quadro.</span>`
+      +` O quadro abaixo NÃO é o total — limpe ${(porStatus&&q)?'os filtros':'o filtro'} para ver tudo.`);
+  }
   notes.push(`Espelha a view <b>Board</b> do go-live no ClickUp — quem entra no quadro é a view, não um critério deste dashboard.${(listNames&&listNames.length)?` Ela reúne tarefas de: ${listNames.map(n=>esc(n)).join(' · ')}.`:''}`);
   notes.push(`"Conclusões mais recentes" mostra as ${DONE_TOP_N} mais recentes entre ${board.doneTotal} concluídas nos últimos 60 dias — <b>estas o board esconde</b> (a view usa <code>show_closed: false</code>). Status <code>backlog</code> fica fora do quadro de propósito.`);
   notes.push(`Coletado em <b>3 requisições</b> (2 páginas da view para as colunas 1–4 + 1 consulta de conclusões), não em 7 — cada requisição a menos é uma chance a menos de estourar o tempo nesse endpoint.`);
@@ -692,6 +751,25 @@ function statusCatalog(tasks){
 function statusAllowed(s){
   return state.statuses===null || state.statuses.has(s);
 }
+/* ---- busca por texto: complemento do filtro de status, não substituto ----
+   O filtro de status recorta por CATEGORIA; com 32 cartões só em "Em andamento",
+   achar uma tarefa específica ainda exigia varrer a coluna com o olho. A busca casa
+   TÍTULO, STATUS e LISTA de origem -- os três campos que o cartão mostra (a lista fica
+   no tooltip do título) -- para que nada seja escondido por um critério invisível.
+   Sem acento e sem caixa: quem digita "hyva" acha "Hyvä". */
+function deacc(s){
+  s=String(s==null?'':s).toLowerCase();
+  try{ return s.normalize('NFD').replace(/[\u0300-\u036f]/g,''); }catch(e){ return s; }
+}
+function searchAllowed(t){
+  const q=deacc(state.q).trim();
+  if(!q)return true;
+  const hay=deacc(cuName(t))+' '+deacc(cuStatus(t))+' '+deacc(cuList(t));
+  /* todos os termos precisam aparecer (AND), em qualquer ordem */
+  return q.split(/\s+/).every(term=>hay.includes(term));
+}
+/* o cartão só entra no quadro se passar pelos DOIS filtros */
+function taskVisible(t){ return statusAllowed(cuStatus(t)) && searchAllowed(t); }
 function msLabel(cat){
   if(state.statuses===null)return `Status: todos (${cat.length})`;
   const n=cat.filter(o=>state.statuses.has(o.status)).length;
@@ -744,11 +822,19 @@ function emptyBoardBox(){
    desabilitado, ou pior, um que só filtrasse por `date_updated`, faria o quadro parecer
    histórico sem ser -- então aqui se declara o que é, em vez de fingir. */
 function boardFiltersHtml(){
+  const q=state.q||'';
   return `<div class="kfilters">
     <span class="kf-lbl">Quadro em</span>
     <span class="kf-static" title="O portal refaz todas as consultas do zero a cada atualização e não guarda histórico; remontar um dia passado exigiria uma chamada de histórico por tarefa, que o portal não consegue encadear. Na versão local do dashboard esse seletor existe.">estado atual · sem histórico por dia</span>
     <span class="kf-sep"></span>
     ${msHtml(D.statusCat)}
+    <span class="kf-sep"></span>
+    <span class="kf-search">
+      <input type="search" id="boardSearch" class="kf-input" value="${esc(q)}"
+        placeholder="Buscar tarefa…" autocomplete="off" spellcheck="false"
+        title="Casa título, status e lista de origem. Sem acento e sem diferenciar maiúsculas; vários termos = todos precisam aparecer.">
+      ${q?`<button class="kf-clear" data-q-clear title="Limpar a busca">×</button>`:''}
+    </span>
   </div>`;
 }
 
@@ -913,8 +999,8 @@ function paint(){
   /* o filtro de status recorta os DOIS lados (páginas da view + conclusões); "escondidas"
      é a diferença de CARTÕES entre o quadro cheio e o filtrado -- contar linhas de dataset
      inflaria o número com as concluídas que nunca virariam cartão */
-  const visibleView=D.tasks.filter(t=>statusAllowed(cuStatus(t)));
-  const visibleDone=D.doneRows.filter(t=>statusAllowed(cuStatus(t)));
+  const visibleView=D.tasks.filter(taskVisible);
+  const visibleDone=D.doneRows.filter(taskVisible);
   const cards=b=>b.cols.reduce((a,c)=>a+c.tasks.length,0);
   const boardFull=buildBoard(D.tasks,D.doneRows);
   D.board=buildBoard(visibleView,visibleDone);
@@ -934,10 +1020,15 @@ function paint(){
     <div class="legend-rows">${LEGEND_ROWS.map(r=>`<div class="legend-row"><span class="lg">${r.g}</span><span><strong>${r.t}</strong> — ${r.d}</span></div>`).join('')}</div>
     ${pipelineHtml(PIPELINE)}
     <div class="note">As setas de avanço/recuo de etapa do report manual não são reproduzíveis aqui: elas exigem o histórico de status por tarefa (<code>time_in_status</code>), uma chamada por tarefa — e cada dataset do portal é uma requisição independente, sem encadeamento.</div>`);
+
+  /* o repaint acabou de recriar o <input> da busca: devolve foco e cursor */
+  restoreSearchFocus();
 }
 
 /* ============================ FILTER (day picker) ============================ */
-const state={date:null,statuses:null,msOpen:false};
+/* q = texto da busca do quadro; qCaret/qFocus só existem para devolver o cursor
+   depois do repaint (ver restoreSearchFocus) */
+const state={date:null,statuses:null,msOpen:false,q:'',qCaret:0,qFocus:false};
 function setDate(dateStr){
   state.date=maxDate(minDate(dateStr,D.period.max),D.period.min);
   document.getElementById('dayPicker').value=state.date;
@@ -991,13 +1082,71 @@ function wireStatusFilter(){
   });
 }
 
+/* ---- busca por texto: mesma delegação, e o foco tem de sobreviver ao repaint ----
+   Cada tecla redesenha o tile inteiro (innerHTML), o que destrói o <input> em que a
+   pessoa está digitando. Sem devolver foco e cursor, dava para digitar exatamente UMA
+   letra por clique -- então o repaint restaura os dois. */
+function wireBoardSearch(){
+  const root=document.getElementById('tiles');
+  root.addEventListener('input',e=>{
+    const inp=e.target.closest('#boardSearch');
+    if(!inp)return;
+    state.q=inp.value||'';
+    state.qCaret=(inp.selectionStart==null?state.q.length:inp.selectionStart);
+    state.qFocus=true;
+    paint();
+  });
+  root.addEventListener('click',e=>{
+    if(!e.target.closest('[data-q-clear]'))return;
+    state.q='';state.qCaret=0;state.qFocus=true;
+    paint();
+  });
+  /* Esc limpa a busca sem precisar do mouse */
+  root.addEventListener('keydown',e=>{
+    if(e.key!=='Escape')return;
+    if(!e.target.closest('#boardSearch'))return;
+    if(!(state.q||''))return;
+    state.q='';state.qCaret=0;state.qFocus=true;
+    paint();
+  });
+}
+/* chamado no fim de cada paint. Consome a marca de propósito: o foco volta UMA vez,
+   logo depois da tecla que causou o repaint. Se a marca ficasse ligada, qualquer outro
+   repaint (trocar o dia, marcar um status) roubaria o cursor para a caixa de busca. */
+function restoreSearchFocus(){
+  if(!state.qFocus)return;
+  state.qFocus=false;
+  const inp=document.getElementById('boardSearch');
+  if(!inp||!inp.focus)return;
+  try{
+    inp.focus();
+    if(inp.setSelectionRange){
+      const p=Math.min(state.qCaret==null?inp.value.length:state.qCaret,inp.value.length);
+      inp.setSelectionRange(p,p);
+    }
+  }catch(e){/* stub de teste sem foco: a busca segue funcionando */}
+}
+
 /* ============================ THEME (claro / escuro) ============================
    Só troca o atributo data-theme na raiz; todo o resto é variável CSS, então nada
    precisa ser redesenhado -- inclusive os SVGs, que leem var(--teal)/var(--card)
    direto no atributo. Sem localStorage (iframe sandbox), a escolha vale para a
-   sessão: recarregar volta ao claro. */
-let theme='light';
-function setTheme(t){
+   sessão: recarregar volta ao tema do sistema.
+
+   Abre no tema do SISTEMA (`prefers-color-scheme`), não fixo no claro: quem usa o
+   computador no escuro levava um flash branco a cada carga -- e no portal, que roda
+   dentro de iframe, não há como persistir a escolha para compensar. O clique no botão
+   passa a valer sobre o sistema (`themeManual`) para a sessão: mudar a preferência do
+   sistema com a página aberta não deve desfazer uma escolha explícita de quem está
+   olhando. matchMedia é feature-detectado -- em ambiente sem ele (o stub do harness),
+   cai no claro, como antes. */
+let theme='light', themeManual=false;
+function prefersDark(){
+  try{ return !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches); }
+  catch(e){ return false; }
+}
+function setTheme(t,manual){
+  if(manual)themeManual=true;
   theme=(t==='dark')?'dark':'light';
   const root=document.documentElement||document.body;
   if(root&&root.setAttribute)root.setAttribute('data-theme',theme);
@@ -1007,6 +1156,16 @@ function setTheme(t){
     b.title=(theme==='dark')?'Voltar ao fundo claro (vale para esta sessão)'
                             :'Usar fundo escuro (vale para esta sessão)';
   }
+}
+/* segue o sistema enquanto ninguém tocou no botão */
+function watchSystemTheme(){
+  try{
+    if(!window.matchMedia)return;
+    const mq=window.matchMedia('(prefers-color-scheme: dark)');
+    const onChange=e=>{ if(!themeManual)setTheme(e.matches?'dark':'light'); };
+    if(mq.addEventListener)mq.addEventListener('change',onChange);
+    else if(mq.addListener)mq.addListener(onChange);
+  }catch(e){/* ambiente sem matchMedia: fica no tema inicial */}
 }
 
 /* ============================ SOURCE STATUS PILLS ============================ */
@@ -1022,11 +1181,15 @@ function srcPills(sets){
     /* timeout é falha transitória: pílula âmbar dizendo "timeout", não vermelha dizendo
        "erro" -- senão a pílula contradiz a caixa do tile, que manda tentar de novo */
     const soTimeout=bad.length>0&&bad.every(p=>isTimeoutErr(p.error));
+    /* 401/403 é vermelho como qualquer erro, mas a pílula DIZ "chave 401": quem olha o
+       cabeçalho fica sabendo que é credencial sem precisar abrir o tile */
+    const soAuth=bad.length>0&&bad.every(p=>isAuthErr(p.error));
     const st=bad.length?(soTimeout?'empty':'err'):(parts.every(p=>stateOf(p)==='empty')?'empty':'ok');
     const rows=parts.reduce((a,p)=>a+p.rows.length,0);
     const title=parts.map(p=>`${p.name}: ${stateOf(p)==='err'?('ERRO — '+(p.error||''))
       :p.rows.length+' linhas'+(p.shape?` (formato: ${p.shape})`:'')}`).join('\n');
-    const txt=bad.length?(soTimeout?'timeout':'erro'):(st==='empty'?'vazio':F.int(rows)+' linhas');
+    const txt=bad.length?(soTimeout?'timeout':(soAuth?'chave 401':'erro'))
+             :(st==='empty'?'vazio':F.int(rows)+' linhas');
     return `<span class="src ${st}" title="${esc(title)}"><span class="dot"></span>${g.label} · ${txt}</span>`;
   }).join('');
   document.getElementById('srcPills').innerHTML=html;
@@ -1145,9 +1308,11 @@ async function boot(){
     buildShells();
     wireFilters();
     wireStatusFilter();
-    setTheme('light');
+    wireBoardSearch();
+    setTheme(prefersDark()?'dark':'light');
+    watchSystemTheme();
     document.getElementById('themeToggle').addEventListener('click',
-      ()=>setTheme(theme==='dark'?'light':'dark'));
+      ()=>setTheme(theme==='dark'?'light':'dark',true));
     document.getElementById('resetLayout').addEventListener('click',()=>{buildShells();paint();});
     addEventListener('resize',()=>{
       if(!D||D.err.orders||!D.orders.length)return;

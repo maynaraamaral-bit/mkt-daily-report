@@ -5,7 +5,17 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const SITE = path.resolve('site');
-const HTML = fs.readFileSync(path.join(SITE, 'index.html'), 'utf8');
+/* Lê o .html DE ORIGEM, não a cópia em site/.
+   A cópia só é atualizada pelo run_manifest.py, que exige o Magento ao vivo (rede da
+   JEM + ../.env). Fora dessa rede o sync não acontece, e o harness passava a testar uma
+   página velha SEM AVISO -- foi exatamente o que aconteceu em 26/08. A cópia continua
+   existindo para a prévia no navegador, e a divergência é declarada aqui em voz alta. */
+const SRC = path.resolve('..', 'portal_jem_marketing_daily.html');
+const HTML = fs.readFileSync(SRC, 'utf8');
+const COPY = path.join(SITE, 'index.html');
+if (!fs.existsSync(COPY) || fs.readFileSync(COPY, 'utf8') !== HTML)
+  console.log('⚠ site/index.html está DIFERENTE do .html de origem (a prévia no navegador '
+    + 'está velha). O teste roda contra a origem; rode run_manifest.py para sincronizar.');
 
 /* ---------------- minimal DOM ---------------- */
 class ClassList {
@@ -85,7 +95,7 @@ const _blocks=HTML.split('<script>');
 const _code=_blocks[_blocks.length-1].split('</script>')[0];
 if(!/function paint\(\)/.test(_code))
   throw new Error('não achei o <script> principal da página (extração por split)');
-const code=_code+'\nglobalThis.__api={boot,setDate,compute,shape,buildBoard,cuStatus,cuDone,cuOnBoard,boardGuards,rowsFrom,trendOf,statusToCol,readBaseline,state,setTheme,getTheme:()=>theme,setStatuses,statusCatalog,getD:()=>D};';
+const code=_code+'\nglobalThis.__api={boot,setDate,compute,shape,buildBoard,cuStatus,cuDone,cuOnBoard,boardGuards,rowsFrom,trendOf,statusToCol,readBaseline,state,setTheme,getTheme:()=>theme,getThemeManual:()=>themeManual,setStatuses,statusCatalog,getD:()=>D,paint,searchAllowed,taskVisible,deacc,cuName,cuList,prefersDark,watchSystemTheme,restoreSearchFocus};';
 
 globalThis.document=document;
 globalThis.window=windowStub;
@@ -107,6 +117,52 @@ function has(hay,needle,label){ ok(label||`contém "${needle}"`, String(hay).inc
 const H=id=>document.getElementById(id).innerHTML;
 
 console.log('='.repeat(74));
+console.log('MANIFESTO — formato verificado (frontmatter + corpo YAML)');
+console.log('-'.repeat(74));
+/* O `.md` só é executável no formato verificado em 25/08/2026 (skill ai-dashboard):
+   frontmatter YAML + `name:`/`connector:` DENTRO do corpo do bloco + SQL sob `query: |`.
+   O formato descrito na tela de instruções do portal (`name=` na linha da cerca) NÃO roda,
+   e já foi meio-revertido nesta pasta uma vez -- por isso é asserção, não convenção.
+   Aqui vai só o que dá para afirmar sem parser YAML; o run_manifest.py faz a checagem
+   completa (com pyyaml) antes de rodar as queries. */
+const MD = fs.readFileSync(path.resolve('..','portal_jem_marketing_daily.md'),'utf8');
+const fmM = /^---\r?\n([\s\S]*?)\r?\n---\r?\n/.exec(MD);
+ok('manifesto começa com frontmatter YAML', !!fmM);
+const fmTxt = fmM ? fmM[1] : '';
+ok('frontmatter declara title', /^title:\s*\S/m.test(fmTxt));
+ok('frontmatter declara credentials: shared', /^credentials:\s*shared\s*$/m.test(fmTxt));
+ok('frontmatter declara a lista connectors', /^connectors:\s*$/m.test(fmTxt) && /^\s+-\s+\S/m.test(fmTxt));
+ok('NENHUM bloco usa atributo na linha da cerca (formato que não roda)',
+   !/^```\w+ +\S+=/m.test(MD), (/^```\w+ +\S+=.*/m.exec(MD)||[''])[0]);
+
+const fences=[...MD.matchAll(/^```(\w+)\r?\n([\s\S]*?)^```/gm)].map(m=>({lang:m[1],body:m[2]}));
+ok(`${fences.length} blocos executáveis no manifesto`, fences.length>0, `${fences.length}`);
+ok('todo bloco declara name: no corpo', fences.every(b=>/^name:\s*\S/m.test(b.body)));
+ok('todo bloco declara connector: no corpo', fences.every(b=>/^connector:\s*\S/m.test(b.body)));
+const mysqlB=fences.filter(b=>b.lang==='mysql');
+ok('todo bloco mysql aninha o SQL sob `query: |`', mysqlB.length>0 && mysqlB.every(b=>/^query:\s*\|\s*$/m.test(b.body)));
+ok('o SQL vem indentado (é escalar YAML, não SQL cru)',
+   mysqlB.every(b=>/^ {2}SELECT/m.test(b.body)));
+/* chave com colchete precisa de aspas: `{ list_ids[]: ... }` não é YAML válido.
+   Vale só para os BLOCOS -- a prosa do .md cita a forma errada de propósito, como
+   contraexemplo, e varrer o arquivo inteiro acusaria a própria documentação. */
+const badKey=fences.map(b=>b.body).find(b=>/\{[^}\n]*[a-z_]+\[\]\s*:/.test(b));
+ok('chave com colchete está entre aspas (o corpo do bloco é YAML)', !badKey,
+   badKey?(/\{[^}\n]*[a-z_]+\[\]\s*:.*/.exec(badKey)||[''])[0].slice(0,80):'');
+
+/* O contrato de verdade entre os dois arquivos: o nome de cada dataset.
+   `fetch('data/<name>.json')` tem de casar com o `name:` do manifesto -- errar isso dá
+   tile vazio sem erro, o sintoma mais difícil de diagnosticar (foi o de 29/07). */
+const mdNames=new Set(fences.map(b=>/^name:\s*(\S+)/m.exec(b.body)[1]));
+const htmlSets=[...HTML.matchAll(/'(mkt_[a-z_]+|clickup_[a-z0-9_]+)'/g)].map(m=>m[1]);
+const wanted=new Set(htmlSets);
+const faltando=[...wanted].filter(n=>!mdNames.has(n));
+ok('todo dataset que o .html busca existe no manifesto', faltando.length===0, faltando.join(', '));
+const naoUsado=[...mdNames].filter(n=>!wanted.has(n));
+ok('todo dataset do manifesto é usado pelo .html (sem consulta paga e jogada fora)',
+   naoUsado.length===0, naoUsado.join(', '));
+
+console.log('\n' + '='.repeat(74));
 console.log('BOOT (caminho felizinho: todos os 5 datasets)');
 console.log('-'.repeat(74));
 await API.boot();
@@ -290,6 +346,115 @@ ok('marcar todos manualmente equivale a "todos" (state volta a null)',
 ok('sem filtro o rodapé não fala de filtro', !H('body-tasks').includes('Filtro de status ativo'));
 
 console.log('\n' + '='.repeat(74));
+console.log('BUSCA POR TEXTO NO QUADRO');
+console.log('-'.repeat(74));
+/* Termos derivados do PRÓPRIO payload, nunca literais congelados: a view muda de conteúdo
+   toda semana, e teste ancorado em título fixo apodrece igual às asserções de 27/07. */
+const setQ=q=>{API.state.q=q;API.paint();};
+const allCards=b=>b.cols.reduce((a,c)=>a.concat(c.tasks),[]);
+const cardCount=b=>b.cols.reduce((a,c)=>a+c.tasks.length,0);
+
+API.setStatuses(null); setQ('');
+const baseCards=cardCount(D.board);
+
+/* a caixa de busca mora na barra do quadro (.kfilters), junto do filtro de status --
+   é o mesmo lugar e o mesmo peso da versão local */
+has(H('body-tasks'),'id="boardSearch"','a caixa de busca é renderizada no tile');
+has(H('body-tasks'),'kfilters','a busca está na barra de filtros do quadro');
+ok('sem texto, não há botão de limpar', !H('body-tasks').includes('data-q-clear'));
+
+/* --- casa por TÍTULO --- */
+const someTask=allCards(D.board)[0];
+const word=API.deacc(API.cuName(someTask)).split(/\s+/).filter(w=>w.length>4)[0]||'a';
+setQ(word);
+const found=allCards(D.board);
+ok(`buscar "${word}" (palavra de um título real) encolhe o quadro (${baseCards} -> ${found.length})`,
+   found.length>0 && found.length<baseCards, `${baseCards} -> ${found.length}`);
+ok('TODO cartão que sobrou casa o termo em título/status/lista',
+   found.every(t=>(API.deacc(API.cuName(t))+' '+API.deacc(API.cuStatus(t))+' '+API.deacc(API.cuList(t))).includes(word)),
+   found.map(t=>API.cuName(t)).slice(0,3).join(' | '));
+ok('a tarefa de origem do termo está entre as encontradas',
+   found.some(t=>t.id===someTask.id));
+
+has(H('body-tasks'),'data-q-clear','com texto, aparece o botão de limpar');
+has(H('body-tasks'),`value="${word}"`,'o input reflete o termo digitado (sobrevive ao repaint)');
+
+/* --- o rodapé nomeia a BUSCA, não "filtro de status" --- */
+has(H('body-tasks'),'Busca','rodapé nomeia a busca como o filtro ativo');
+has(H('body-tasks'),'NÃO é o total','rodapé mantém o aviso de que o quadro não é o total');
+ok('rodapé NÃO culpa o filtro de status quando só a busca está ativa',
+   !H('body-tasks').includes('Filtro de status ativo'));
+has(H('body-tasks'),'escondida','rodapé diz quantas foram escondidas');
+
+/* --- acento e caixa não importam --- */
+ok('deacc tira acento e caixa', API.deacc('Integração Hyvä ÁÉÍÕÇ')==='integracao hyva aeiocc'
+   || API.deacc('Integração Hyvä')==='integracao hyva', API.deacc('Integração Hyvä'));
+const accTask=allCards(API.buildBoard(D.tasks,D.doneRows))
+  .find(t=>API.deacc(API.cuName(t))!==String(API.cuName(t)).toLowerCase());
+if(accTask){
+  const accWord=API.deacc(API.cuName(accTask)).split(/\s+/).filter(w=>w.length>4)[0];
+  setQ(accWord);
+  ok(`buscar sem acento acha título acentuado ("${accWord}")`,
+     allCards(D.board).some(t=>t.id===accTask.id), API.cuName(accTask));
+}else{
+  ok('buscar sem acento acha título acentuado (sem tarefa acentuada no payload — vácuo)', true);
+}
+
+/* --- vários termos = AND, em qualquer ordem --- */
+const twoWords=API.deacc(API.cuName(someTask)).split(/\s+/).filter(w=>w.length>3).slice(0,2);
+if(twoWords.length===2){
+  setQ(twoWords.join(' '));
+  const a=cardCount(D.board);
+  setQ(twoWords.slice().reverse().join(' '));
+  ok('dois termos: a ordem não muda o resultado (AND)', cardCount(D.board)===a, `${a}`);
+  setQ(twoWords[0]);
+  ok('dois termos filtram MAIS que um só (AND, não OR)', a<=cardCount(D.board), `${a} <= ${cardCount(D.board)}`);
+}else{
+  ok('dois termos: título curto demais no payload — vácuo', true);
+  ok('dois termos filtram mais que um — vácuo', true);
+}
+
+/* --- busca casa por STATUS (campo que o cartão mostra no rodapé) --- */
+const stTerm=API.deacc(cat[0].status).split(/\s+/)[0];
+setQ(stTerm);
+ok(`buscar por status ("${stTerm}") traz cartões daquele status`,
+   allCards(D.board).some(t=>API.deacc(API.cuStatus(t)).includes(stTerm)));
+
+/* --- busca sem resultado: quadro vazio EXPLICADO, nunca "sem dados" --- */
+setQ('zzz-nada-casa-com-isso-zzz');
+ok('busca sem resultado zera o quadro', cardCount(D.board)===0);
+has(H('body-tasks'),'Busca','quadro vazio por busca ainda explica o motivo');
+ok('quadro vazio por busca NÃO cai na caixa de "nenhuma tarefa retornada"',
+   !H('body-tasks').includes('Nenhuma tarefa retornada'));
+
+/* --- os dois filtros são cumulativos e AMBOS são nomeados --- */
+API.setStatuses(new Set([cat[0].status])); setQ(word);
+const both=H('body-tasks');
+ok('status + busca: o rodapé nomeia os DOIS', both.includes('Filtro de status')&&both.includes('Busca'),
+   both.slice(both.indexOf('hid'),both.indexOf('hid')+140));
+ok('cartão visível passa pelos dois filtros ao mesmo tempo',
+   allCards(D.board).every(t=>API.taskVisible(t)));
+
+/* --- limpar restaura exatamente o estado inicial --- */
+API.setStatuses(null); setQ('');
+ok('limpar a busca restaura o quadro inteiro', cardCount(D.board)===baseCards,
+   `${cardCount(D.board)} vs ${baseCards}`);
+ok('sem busca o rodapé não fala de busca', !H('body-tasks').includes('Busca “'));
+
+/* --- as opções de status NÃO encolhem com a busca (senão esconderiam o que existe) --- */
+const catAll=API.statusCatalog(D.tasks,D.doneRows).length;
+setQ(word);
+ok('a lista de status do filtro não muda conforme se digita',
+   API.statusCatalog(D.tasks,D.doneRows).length===catAll);
+setQ('');
+
+/* --- devolver o foco ao input não pode explodir num DOM sem foco --- */
+API.state.qFocus=true;
+let focoOk=true; try{ API.restoreSearchFocus(); }catch(e){ focoOk=false; }
+ok('restaurar foco é seguro em ambiente sem foco (não lança)', focoOk);
+ok('a marca de foco é consumida (repaint não rouba o cursor depois)', API.state.qFocus===false);
+
+console.log('\n' + '='.repeat(74));
 console.log('SETAS DE TENDÊNCIA (base do dia anterior)');
 console.log('-'.repeat(74));
 /* A base é o dataset OPCIONAL `board_baseline`. Três estados, todos declarados na tela:
@@ -354,8 +519,12 @@ console.log('\n' + '='.repeat(74));
 console.log('TEMA CLARO / ESCURO');
 console.log('-'.repeat(74));
 const themeBtn=document.getElementById('themeToggle');
-ok('abre no tema claro', API.getTheme()==='light' && documentElement.getAttribute('data-theme')==='light',
+/* Sem matchMedia (este stub) ou com sistema no claro, abre claro -- o antigo rótulo
+   "abre no tema claro" afirmava mais do que passou a ser verdade quando a página começou
+   a respeitar prefers-color-scheme; o invariante é "cai no claro quando não há sinal". */
+ok('sem sinal do sistema, abre no claro', API.getTheme()==='light' && documentElement.getAttribute('data-theme')==='light',
    `${API.getTheme()} / ${documentElement.getAttribute('data-theme')}`);
+ok('prefersDark() é falso quando o ambiente não tem matchMedia', API.prefersDark()===false);
 ok('botão oferece o escuro', /Escuro/.test(themeBtn.textContent), themeBtn.textContent);
 API.setTheme('dark');
 ok('troca para escuro marca data-theme="dark" na raiz',
@@ -370,6 +539,40 @@ API.setTheme('dark');
 ok('trocar tema não redesenha nem perde os gráficos', H('cw-revenue')+H('cw-orders')===svgBefore);
 has(H('cw-revenue'),'var(--teal)','barras usam a variável de cor (acompanham o tema)');
 has(H('cw-orders'),'var(--card)','anel dos pontos segue a cor do card');
+API.setTheme('light');
+
+/* ---- prefers-color-scheme: abrir no tema do sistema ----
+   Sem localStorage (sandbox do iframe) não há como lembrar a escolha, então o sinal do
+   sistema é o único jeito de não dar flash branco em quem usa escuro. */
+let sysDark=true, mqFns=[];
+windowStub.matchMedia=q=>({
+  matches:sysDark, media:q,
+  addEventListener:(t,fn)=>mqFns.push(fn),
+  addListener:fn=>mqFns.push(fn),
+});
+ok('prefersDark() lê o sistema quando matchMedia existe', API.prefersDark()===true);
+API.setTheme(API.prefersDark()?'dark':'light');
+ok('sistema no escuro => a página abre no escuro',
+   documentElement.getAttribute('data-theme')==='dark', documentElement.getAttribute('data-theme'));
+sysDark=false;
+ok('sistema no claro => a página abre no claro',
+   (API.setTheme(API.prefersDark()?'dark':'light'), documentElement.getAttribute('data-theme')==='light'),
+   documentElement.getAttribute('data-theme'));
+
+/* enquanto ninguém tocou no botão, a página SEGUE o sistema... */
+API.watchSystemTheme();
+ok('watchSystemTheme registra o ouvinte de mudança do sistema', mqFns.length>0, `${mqFns.length}`);
+mqFns.forEach(fn=>fn({matches:true}));
+ok('sistema muda para escuro e a página acompanha (ninguém tocou no botão)',
+   API.getTheme()==='dark', API.getTheme());
+
+/* ...e depois do clique, a escolha explícita VENCE o sistema pelo resto da sessão */
+API.setTheme('light',true);
+ok('clique no botão marca a escolha como manual', API.getThemeManual()===true);
+mqFns.forEach(fn=>fn({matches:true}));
+ok('escolha manual não é desfeita por mudança do sistema',
+   API.getTheme()==='light' && documentElement.getAttribute('data-theme')==='light', API.getTheme());
+delete windowStub.matchMedia;
 API.setTheme('light');
 
 console.log('\n' + '='.repeat(74));
@@ -462,6 +665,34 @@ has(H('srcPills'),'timeout','pílula diz "timeout", não "erro"');
 has(H('srcPills'),'src empty','pílula de timeout é âmbar, não vermelha');
 ok('Magento continua renderizando com ClickUp em timeout',
    H('body-site').includes('Companies') && !H('body-site').includes('Não foi possível'));
+META=new Map();
+
+/* ---- 401 do ClickUp: a mensagem REAL que o portal devolveu em 27/08/2026 ----
+   Antes deste caso, um 401 caía na caixa genérica "Causas possíveis, em ordem", que
+   mandava conferir quatro coisas (equipe/permissão/view/cadastro) quando o servidor já
+   tinha dito qual era. Mesmo defeito que o timeout tinha em 29/07: a caixa adivinhava. */
+META=new Map([['clickup_board_pg0',
+  {status:'ERROR',error:'HTTP 401: {"err":"Token invalid","ECODE":"OAUTH_025"}'}]]);
+registry.clear();
+await API.boot();
+has(H('body-tasks'),'recusada (401)','401 tem caixa própria, não a genérica de causas possíveis');
+has(H('body-tasks'),'OAUTH_025','a caixa mostra o código do ClickUp');
+ok('a caixa de 401 NÃO oferece a lista de "causas possíveis, em ordem"',
+   !H('body-tasks').includes('Causas possíveis'));
+ok('a caixa de 401 NÃO manda tentar de novo (não é falha transitória)',
+   !H('body-tasks').includes('atualizar de novo'));
+has(H('body-tasks'),'credentials: shared','a caixa manda checar DE QUEM é a chave (equipe vs pessoal)');
+has(H('body-tasks'),'settings/apps','a caixa diz onde gerar outra');
+has(H('body-tasks'),'invalida a anterior','a caixa explica por que uma chave que funcionava parou');
+has(H('body-tasks'),'última execução que deu certo',
+   'a caixa avisa que a contagem de linhas ao lado do erro é da execução anterior');
+has(H('srcPills'),'chave 401','pílula nomeia credencial em vez de só "erro"');
+has(H('srcPills'),'src err','pílula de 401 é vermelha (não é transitória como o timeout)');
+ok('Magento continua renderizando com a chave do ClickUp recusada',
+   H('body-site').includes('Companies') && !H('body-site').includes('Não foi possível'));
+/* e o inverso: timeout não pode ser classificado como credencial */
+ok('isAuthErr não confunde timeout com credencial',
+   !H('body-tasks').includes('não respondeu em tempo'));
 META=new Map();
 
 FAIL=new Set(['mkt_orders']);

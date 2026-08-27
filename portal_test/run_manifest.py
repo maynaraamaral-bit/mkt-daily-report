@@ -34,27 +34,67 @@ def load_env(path):
     return env
 
 
-# --- extract the mysql blocks: ```mysql name=X connector=Y ... ``` -------------
+# --- extract the blocks FROM THE MANIFEST ------------------------------------------
+# Format (verified 2026-08-25, enforced by the ai-dashboard skill): YAML frontmatter +
+# YAML block BODIES -- `name:`/`connector:` inside the block, SQL under `query: |`.
+# The portal's own instruction text describes `name=` on the fence line; that does NOT
+# run, and this parser deliberately REFUSES it so a half-reverted manifest fails loudly
+# here instead of silently in production.
 text = MD.read_text(encoding="utf-8")
-blocks = re.findall(r"```mysql([^\n]*)\n(.*?)```", text, re.S)
-print(f"Found {len(blocks)} mysql block(s) in the manifest")
+
+try:
+    import yaml
+except ImportError:  # pragma: no cover
+    raise SystemExit("pyyaml necessário: pip install pyyaml")
+
+# 1. frontmatter -------------------------------------------------------------------
+fm_m = re.match(r"^---\r?\n(.*?)\r?\n---\r?\n", text, re.S)
+assert fm_m, (
+    "manifesto sem frontmatter YAML. O formato verificado exige "
+    "---\\ntitle:...\\ncredentials: shared\\nconnectors:\\n  - ...\\n--- no topo."
+)
+fm = yaml.safe_load(fm_m.group(1)) or {}
+for key in ("title", "credentials", "connectors"):
+    assert key in fm, f"frontmatter sem `{key}:`"
+assert fm["credentials"] == "shared", f"credentials deveria ser 'shared', é {fm['credentials']!r}"
+print(f"Frontmatter: title={fm['title']!r} credentials={fm['credentials']!r} "
+      f"connectors={fm['connectors']}")
+
+# 2. blocos executáveis (só cerca na coluna 0 -- os indentados são alternativas
+#    desativadas de propósito no .md e NÃO devem ser executados) --------------------
+raw_blocks = re.findall(r"^```(\w+)\r?\n(.*?)^```", text, re.S | re.M)
+
+assert not re.search(r"^```\w+ +\S+=", text, re.M), (
+    "bloco com atributo na linha da cerca (`name=`/`connector=`): esse é o formato da "
+    "tela de instruções do portal, que NÃO roda. Ver a seção '⚠ Formato deste arquivo' no .md."
+)
 
 parsed = []
-for header, sql in blocks:
-    name = re.search(r"name=(\S+)", header)
-    conn_ = re.search(r"connector=(\S+)", header)
-    assert name, f"block without name=: {header!r}"
-    parsed.append((name.group(1), (conn_.group(1) if conn_ else "magento"), sql.strip()))
-    print(f"  - {name.group(1)}  (connector={conn_.group(1) if conn_ else 'magento'})")
+rest_blocks = []
+for lang, body in raw_blocks:
+    d = yaml.safe_load(body)
+    assert isinstance(d, dict), f"corpo do bloco ```{lang} não é um mapa YAML"
+    assert "name" in d, f"bloco ```{lang} sem `name:` no corpo"
+    assert "connector" in d, f"bloco ```{lang} sem `connector:` (obrigatório em TODO bloco)"
+    if lang == "mysql":
+        assert "query" in d, f"bloco mysql {d['name']} sem `query: |`"
+        parsed.append((d["name"], d["connector"], d["query"].strip()))
+        print(f"  - mysql {d['name']}  (connector={d['connector']})")
+    elif lang == "rest":
+        rest_blocks.append(d)
+    else:
+        print(f"  - {lang} {d['name']}  (não executado por este harness)")
+
+print(f"Found {len(parsed)} mysql block(s) in the manifest")
+
+# declared connectors must cover what the blocks actually use
+used = {c for _, c, _ in parsed} | {d["connector"] for d in rest_blocks}
+missing = used - set(fm["connectors"] or [])
+assert not missing, f"connector usado nos blocos e ausente da frontmatter: {sorted(missing)}"
 
 # also list the rest blocks so I can eyeball them
-rest = re.findall(r"```rest\n(.*?)```", text, re.S)
-print(f"\nFound {len(rest)} rest block(s):")
-for r in rest:
-    d = dict(
-        (m.group(1), m.group(2).strip())
-        for m in re.finditer(r"^(\w+):\s*(.+)$", r, re.M)
-    )
+print(f"\nFound {len(rest_blocks)} rest block(s):")
+for d in rest_blocks:
     print(f"  - {d.get('name')}: {d.get('method')} {d.get('path')} select={d.get('select')} "
           f"paginate={d.get('paginate')} credentials={d.get('credentials')}")
     print(f"      query: {d.get('query')}")

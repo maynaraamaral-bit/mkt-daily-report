@@ -1,3 +1,11 @@
+---
+title: JEM Marketing Daily Report
+credentials: shared
+connectors:
+  - magento
+  - clickup
+---
+
 # JEM Marketing Daily Report
 
 Snapshot diário do site + pipeline de desenvolvimento para o time de marketing: KPIs de
@@ -5,15 +13,46 @@ cadastro/vendas do **Magento** (Companies, Contacts, pedidos e faturamento do di
 destaque, tendência de 6 meses) e o quadro de tarefas do **ClickUp**, espelhando a view "Board" do
 go-live.
 
-Três datasets **compartilhados** de Magento (MySQL, mesma visão para todos) + um dataset **REST** do
-ClickUp. Todo KPI, gráfico e coluna do kanban é calculado **no navegador** a partir dessas linhas
-cruas — é isso que faz o seletor de dia (Hoje / Ontem / calendário) recalcular a metade de cima na
-hora, sem nova consulta.
+Três datasets **compartilhados** de Magento (MySQL, mesma visão para todos) + três datasets **REST**
+do ClickUp (duas páginas fixas da view + as conclusões; o porquê de serem três está em "Três
+requisições em vez de sete"). Todo KPI, gráfico e coluna do kanban é calculado **no navegador** a
+partir dessas linhas cruas — é isso que faz o seletor de dia (Hoje / Ontem / calendário) recalcular a
+metade de cima na hora, sem nova consulta.
 
 **`credentials: shared`** marca o dashboard como recurso de **equipe**: um único token do ClickUp
 cadastrado no portal serve todo o time de marketing, em vez de cada pessoa cadastrar a própria.
 Independente disso, **um token precisa ser cadastrado uma vez** — o manifesto não pode carregar
 chave, então o portal sempre pede na primeira vez.
+
+## ⚠ Formato deste arquivo — não "consertar" para o formato da tela de instruções do portal
+
+**O texto de instruções do portal está errado sobre o formato do manifesto.** Ele descreve atributos
+na linha da cerca (` ```sql name=meu_dataset `, sem frontmatter). **Esse formato não roda.** O parser
+exige o que está aqui, verificado em 25/08/2026:
+
+1. **Frontmatter YAML obrigatória** — `title`, `credentials: shared`, lista `connectors:`.
+2. **`name:` vai DENTRO do corpo do bloco**, em linha própria — nunca `name=` na cerca.
+3. **`connector:` é obrigatório em TODO bloco** (a instrução do portal afirma que `connector` é só
+   para REST — é falso).
+4. **O corpo do bloco é um documento YAML**, não SQL cru: o SQL fica sob `query: |` (escalar literal),
+   com cada linha indentada em 2 espaços.
+5. O `name` de cada dataset é o **contrato com o `.html`**: `fetch('data/<name>.json')` tem de casar
+   exatamente.
+
+⚠ **Histórico desta pasta, para não repetir:** em 29/07/2026 a linha `credentials: shared` foi movida
+para a frontmatter, o arquivo foi reportado como "não está certo" e a mudança foi **revertida** — a
+frontmatter tinha sido tratada como experimento, quando o problema real era que **o resto do arquivo
+continuava no formato de cerca**. Frontmatter e corpo YAML andam **juntos**; meia conversão é o pior
+dos dois mundos. Aqui `credentials: shared` está na frontmatter (regra 1) **e** repetida nos blocos
+` ```rest ` — as duas dizem `shared`, então não há como se contradizerem, e nenhuma das duas leituras
+possíveis da plataforma cai em chave por usuário (que foi o defeito observado em 29/07 ao remover a
+linha do bloco). **Não remova nenhuma das duas** sem verificar na tela de quem é a chave em uso.
+
+⚠ **Consequência de a regra 4 valer:** o corpo do bloco passa pelo parser YAML, então chave com
+colchete dentro de mapa em fluxo precisa de **aspas** — `{ "list_ids[]": [...] }`. Sem aspas
+(`{ list_ids[]: [...] }`, como estava até 26/08) o YAML **não parseia**: `[`, `]` e `,` são
+indicadores reservados em contexto de fluxo. Testado com parser YAML: sem aspas dá `ParserError`,
+com aspas resolve para a chave literal `list_ids[]`.
 
 ---
 
@@ -33,19 +72,22 @@ um pedido feito por qualquer outro funcionário não resolveria empresa nenhuma.
 cliente está ligado a mais de uma empresa** (verificado — 0 casos), então ele não duplica linhas de
 pedido (32 pedidos em 27/07 = 32 linhas, com e sem o join).
 
-```mysql name=mkt_orders connector=magento
-SELECT
-    so.increment_id                                  AS increment_id,
-    DATE_FORMAT(so.created_at, '%Y-%m-%d %H:%i:%s')  AS created_at,
-    ROUND(so.subtotal + so.discount_amount, 2)       AS amount,
-    link.company_id                                  AS company_id,
-    acc.company_name                                 AS company_name
-FROM sales_order so
-LEFT JOIN amasty_company_account_customer link ON link.customer_id = so.customer_id
-LEFT JOIN amasty_company_account_company  acc  ON acc.company_id  = link.company_id
-WHERE so.created_at >= '2026-01-01'
-  AND so.increment_id LIKE '%JEM%'
-ORDER BY so.created_at
+```mysql
+name: mkt_orders
+connector: magento
+query: |
+  SELECT
+      so.increment_id                                  AS increment_id,
+      DATE_FORMAT(so.created_at, '%Y-%m-%d %H:%i:%s')  AS created_at,
+      ROUND(so.subtotal + so.discount_amount, 2)       AS amount,
+      link.company_id                                  AS company_id,
+      acc.company_name                                 AS company_name
+  FROM sales_order so
+  LEFT JOIN amasty_company_account_customer link ON link.customer_id = so.customer_id
+  LEFT JOIN amasty_company_account_company  acc  ON acc.company_id  = link.company_id
+  WHERE so.created_at >= '2026-01-01'
+    AND so.increment_id LIKE '%JEM%'
+  ORDER BY so.created_at
 ```
 
 ## Dataset: `mkt_totais`
@@ -53,12 +95,15 @@ ORDER BY so.created_at
 Uma única linha com os totais que não têm recorte por dia (Companies, Contacts) e o **relógio do
 banco**, usado para definir o que é "hoje" no seletor de dia.
 
-```mysql name=mkt_totais connector=magento
-SELECT
-    (SELECT COUNT(*) FROM amasty_company_account_company) AS companies_total,
-    (SELECT COUNT(*) FROM customer_entity)                AS contacts_total,
-    DATE_FORMAT(CURDATE(), '%Y-%m-%d')                    AS db_today,
-    DATE_FORMAT(NOW(), '%Y-%m-%d %H:%i:%s')               AS db_now
+```mysql
+name: mkt_totais
+connector: magento
+query: |
+  SELECT
+      (SELECT COUNT(*) FROM amasty_company_account_company) AS companies_total,
+      (SELECT COUNT(*) FROM customer_entity)                AS contacts_total,
+      DATE_FORMAT(CURDATE(), '%Y-%m-%d')                    AS db_today,
+      DATE_FORMAT(NOW(), '%Y-%m-%d %H:%i:%s')               AS db_now
 ```
 
 ## Dataset: `mkt_novos_contatos`
@@ -67,20 +112,30 @@ Contas de cliente criadas **por dia** no ano corrente (≈156 linhas — só dia
 `customer_entity.created_at`.
 Alimenta o chip "novos no dia" do cartão Contacts, para **qualquer** dia do seletor.
 
-```mysql name=mkt_novos_contatos connector=magento
-SELECT
-    DATE_FORMAT(created_at, '%Y-%m-%d') AS dia,
-    COUNT(*)                            AS novos
-FROM customer_entity
-WHERE created_at >= '2026-01-01'
-GROUP BY DATE_FORMAT(created_at, '%Y-%m-%d')
-ORDER BY dia
+```mysql
+name: mkt_novos_contatos
+connector: magento
+query: |
+  SELECT
+      DATE_FORMAT(created_at, '%Y-%m-%d') AS dia,
+      COUNT(*)                            AS novos
+  FROM customer_entity
+  WHERE created_at >= '2026-01-01'
+  GROUP BY DATE_FORMAT(created_at, '%Y-%m-%d')
+  ORDER BY dia
 ```
 
-## Dataset: `clickup_golive_board`
+## Datasets do ClickUp: `clickup_board_pg0` · `clickup_board_pg1` · `clickup_concluidas`
 
 **A view "Board" do go-live**, exatamente a que o time usa:
-<https://app.clickup.com/31082060/v/b/6-901112863157-2>. Um único dataset alimenta as 5 colunas.
+<https://app.clickup.com/31082060/v/b/6-901112863157-2>. **Três** datasets alimentam as 5 colunas
+(duas páginas fixas da view + as conclusões) — o porquê está em "Três requisições em vez de sete".
+
+⚠ **Não existe mais um dataset chamado `clickup_golive_board`** (era o desenho único, até 29/07).
+O nome sobrevive só como referência histórica nesta prosa. **Se aparecer na tela do dashboard um erro
+do tipo `clickup_golive_board: Failed to fetch`, o diagnóstico é imediato: o `.html` publicado é o
+antigo** — ele pede um dataset que este manifesto não declara. Republicar o `.html` resolve; não é
+credencial nem view. (Aconteceu em 27/08/2026.)
 
 Antes eram duas consultas às listas inteiras (Incident Support | Go-Live + Hyvä Backlog) e o
 critério de "quais tarefas entram" era **meu**. Agora é o do time: a curadoria vive na view, e o
@@ -164,7 +219,7 @@ name: clickup_concluidas
 connector: clickup
 method: GET
 path: /team/31082060/task
-query: { list_ids[]: ["901112863157", "901110423629", "901113068292"], statuses[]: ["Closed", "approved by qa - prd"], include_closed: true, date_updated_gt: 60d }
+query: { "list_ids[]": ["901112863157", "901110423629", "901113068292"], "statuses[]": ["Closed", "approved by qa - prd"], include_closed: true, date_updated_gt: 60d }
 select: tasks
 paginate: false
 credentials: shared
@@ -272,6 +327,22 @@ está ali. A lista de origem virou tooltip do título.
   não deve mudar porque alguém escondeu um status.
 - Sem `localStorage` (iframe sandbox), a escolha **vale para a sessão**.
 
+### Busca por texto (na mesma barra)
+
+Caixa **"Buscar tarefa…"** ao lado do filtro de status. O filtro de status recorta por **categoria**;
+com 32 cartões só em "Em andamento", achar uma tarefa específica ainda obrigava a varrer a coluna com
+o olho.
+
+- Casa **título, status e lista de origem** — os três campos que o cartão mostra (a lista está no
+  tooltip do título). Buscar por um campo que não aparece no cartão obrigaria a adivinhar por que a
+  tarefa está ali; é a mesma regra que trouxe o status para o rodapé do cartão.
+- **Sem acento e sem caixa** (quem digita `hyva` acha `Hyvä`), e vários termos = **todos** precisam
+  aparecer, em qualquer ordem. `Esc` limpa, o mesmo que o `×`.
+- Os dois filtros são **cumulativos**, e o rodapé diz **qual** deles está escondendo tarefa (status,
+  busca, ou os dois) além de quantas. Aviso que só diz "escondidas" manda procurar no lugar errado.
+- As opções do filtro de status **não** mudam conforme se digita: elas saem do conjunto completo, de
+  propósito — lista de opções que encolhe enquanto se busca esconde o que existe.
+
 ## Diferenças conscientes vs. a versão local (`dashboard.html`)
 
 Três coisas da versão local **não são reproduzíveis no portal**, e estão degradadas de forma
@@ -363,7 +434,9 @@ sozinhas: **nenhuma mudança de `.html` será necessária**.
 
 **O que falta:** publicar o arquivo diário numa URL que o servidor do portal alcance, e ativar o bloco
 abaixo — ele está **indentado de propósito** para a plataforma não tentar executá-lo com uma URL de
-mentira. Para ligar, virar bloco de código com a linguagem `rest` e preencher a URL:
+mentira. Para ligar são **duas** mexidas: virar bloco de código com a linguagem `rest` (preenchendo a
+URL) **e acrescentar `http` à lista `connectors:` da frontmatter** — sem isso o conector não é
+declarado e o dataset falha na publicação, não em tempo de execução.
 
     name: board_baseline
     connector: http
@@ -415,6 +488,23 @@ está na mesma rede (o host do banco Magento é IP público).
     do dashboard trata os dois casos separadamente desde 29/07, justamente porque a versão anterior
     listava "credencial de equipe" como causa nº 1 diante de uma mensagem de timeout e mandava
     investigar o lado errado.
+- ⚠ **`HTTP 401: {"err":"Token invalid","ECODE":"OAUTH_025"}` — chave recusada (visto em 27/08/2026).**
+  Os três datasets voltaram esse 401 ao mesmo tempo. É **definitivo**: a consulta chegou ao ClickUp e
+  ele recusou a credencial — não é a view, não é o manifesto, não é lentidão. Desde 27/08 esse caso
+  tem **caixa própria** no dashboard (antes caía na lista genérica de "causas possíveis, em ordem", que
+  mandava conferir quatro coisas quando o servidor já havia dito qual era — o mesmo defeito que o
+  timeout tinha em 29/07). O que conferir, nesta ordem: (1) em **Sistemas → ClickUp**, **de quem** é a
+  chave em uso — com `credentials: shared` o portal usa a de **equipe**, e uma conexão pessoal válida
+  não substitui a compartilhada revogada; (2) gerar outra em `app.clickup.com/settings/apps`
+  (**gerar uma nova invalida a anterior** — é a razão mais comum de uma chave parar de funcionar
+  sozinha); (3) colar inteira, começando em `pk_`, sem espaço nem quebra (truncada dá este mesmo
+  erro); (4) se a mesma chave funciona em outra ferramenta e só aqui não, o conector pode estar
+  mandando `Bearer <chave>` — token pessoal do ClickUp vai **cru** no cabeçalho `Authorization`, e aí
+  o ajuste é na plataforma.
+  ⚠ **A contagem de linhas ao lado do erro no painel de datasets é da última execução que deu certo**,
+  não da que falhou: `401` não devolve linha nenhuma. Em 27/08 o painel mostrava `30 linhas` em
+  `clickup_board_pg0`/`pg1` **e** o 401 — os 30 eram do run anterior. De quebra, isso confirma que
+  `paginate: false` funciona como projetado (30 e 30, o número que esta seção manda conferir).
   - **O que fazer:** atualizar de novo. Só depois de ~3 falhas seguidas vale suspeitar de credencial
     ou da view.
   - **Por que não tem retry aqui:** nenhum bloco ` ```rest ` deste portal (em nenhum dos dashboards)
@@ -430,9 +520,13 @@ está na mesma rede (o host do banco Magento é IP público).
   nota de uma linha no lugar.
 - **Sem `localStorage` no portal** (roda em iframe sandbox): os blocos são arrastáveis na sessão,
   mas a ordem não persiste entre recarregamentos; "⟲ Ordem padrão" volta ao arranjo original.
-- **Tema claro / escuro** pelo botão ☾/☀ no cabeçalho. Abre sempre no **claro** (bege). A troca só
-  mexe no atributo `data-theme` da raiz — todo o resto é variável CSS, inclusive as cores dos
-  gráficos, que leem `var(--teal)`/`var(--card)` direto no atributo SVG e acompanham sem redesenhar.
-  Pela mesma limitação de sandbox acima, **a escolha vale para a sessão** e recarregar volta ao
-  claro. No escuro os tokens `-dk` clareiam (eles são cor de *texto*: rótulo de gráfico, delta,
-  legenda) e as tintas pastel `-bg` viram tintas escuras.
+- **Tema claro / escuro** pelo botão ☾/☀ no cabeçalho. Abre no tema do **sistema**
+  (`prefers-color-scheme`), não fixo no claro: sem `localStorage` (sandbox) não há como lembrar a
+  escolha, então quem usa o computador no escuro levava um flash branco a **cada** carga. O clique no
+  botão passa a valer **sobre** o sistema pelo resto da sessão — mudar a preferência do sistema com a
+  página aberta não desfaz uma escolha explícita de quem está olhando. A troca só mexe no atributo
+  `data-theme` da raiz — todo o resto é variável CSS, inclusive as cores dos gráficos, que leem
+  `var(--teal)`/`var(--card)` direto no atributo SVG e acompanham sem redesenhar. `color-scheme`
+  acerta o que é nativo (caixa de busca, barra de rolagem). No escuro os tokens `-dk` clareiam (eles
+  são cor de *texto*: rótulo de gráfico, delta, legenda) e as tintas pastel `-bg` viram tintas
+  escuras.

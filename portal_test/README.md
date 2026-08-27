@@ -32,7 +32,7 @@ node test_portal.mjs
 | `run_manifest.py` | Extrai os ` ```mysql ` do `.md`, roda no Magento, escreve `site/data/*.json` no mesmo formato que o portal serviria (decimais e datas como **string**, como o MySQL devolve). Também lista os blocos ` ```rest ` pra inspeção. |
 | `make_fixtures.py` | Reconcilia 27/07 do jeito que o `compute()` da página faz e escreve as **3 fixtures do ClickUp** (`clickup_board_pg0/pg1.json` + `clickup_concluidas.json`), reproduzindo **exatamente as 3 requisições** que o portal faz — se aqui virasse uma varredura completa da view, o teste passaria num dado que o portal nunca recebe. Com retry/backoff. |
 | `clickup_mcp_pull.json` | Amostra de tarefas (pull via MCP, 2026-07-28), usada só como **fallback** se não houver `CLICKUP_TOKEN` ou a API estiver fora. |
-| `test_portal.mjs` | Extrai o `<script>` do `.html`, roda sob um DOM/fetch stub mínimo no Node e faz as asserções. |
+| `test_portal.mjs` | Extrai o `<script>` do `.html`, roda sob um DOM/fetch stub mínimo no Node e faz as asserções. **Desde 26/08 lê o `../portal_jem_marketing_daily.html` de ORIGEM**, não a cópia em `site/` — a cópia só é sincronizada pelo `run_manifest.py`, que exige o Magento ao vivo, então fora da rede da JEM o teste passava a exercitar uma página velha sem avisar. Se a cópia divergir, ele diz na primeira linha. Também afere o **formato do `.md`** (frontmatter + corpo YAML) e o contrato de nomes `.md`↔`.html`, coisas que não dependem de rede. |
 
 **O dataset mistura os dois formatos de payload de propósito**, porque as duas formas existem no
 mundo real: as ~169 tarefas da view vêm no formato **REST v2 cru** (`status` como objeto, com

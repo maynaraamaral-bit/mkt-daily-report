@@ -48,7 +48,7 @@ analyst currently assembles by hand at end of day.
 | `refresh_scheduled.cmd` | Wrapper da tarefa agendada (força UTF-8, crava o interpretador, loga) — ver §6.2 |
 | `board_baseline/` | Um arquivo por dia com o **estado do quadro no fechamento daquele dia** (id → coluna 1-5), 7 dias retidos. É a base das setas do PORTAL — ver §8 e a seção "Preservar o log do dia anterior" no `.md`. Gravado pelo `build_data.py`; o dashboard local não usa (tem o histórico inteiro no `data.json`) |
 | `refresh.log` | Saída do refresh automático. **Primeiro lugar a olhar se o dashboard parecer parado** |
-| `portal_test/` | 132-assertion harness for the portal version (see its `README.md`). Também serve de PRÉVIA local do portal: `site/` tem a página + os dados reais |
+| `portal_test/` | 180-assertion harness for the portal version (era 132 até 26/08; +48 de formato do manifesto, busca no quadro e prefers-color-scheme) (see its `README.md`). Também serve de PRÉVIA local do portal: `site/` tem a página + os dados reais |
 | `clickup_snapshot.json` | Leftover from the old manual MCP pull — only used as fallback if the API fails (see §2) |
 | `history.json` | Day-over-day snapshot of Companies/Contacts/etc., since Magento has no history of its own |
 | `serve.py` | Shim launching the central `../server.py` |
@@ -556,12 +556,43 @@ fail silently after an unrelated environment change.
   gatilhos + faixa de aviso; **n8n saiu do mapa** e as menções que o recomendavam (inclusive como
   host das setas do portal) foram marcadas obsoletas em vez de apagadas, para ninguém reciclar o
   desenho antigo. Nada de código mudou nesta reversão — só documentação.
+- **2026-08-26 (skill `ai-dashboard`: o manifesto estava no formato que NÃO roda)** — Pedido:
+  *"carregue a skill ai-dashboard e ajuste o md e o html desse projeto"*. A skill mora em
+  `C:\Claude\Skills\ai-dashboard.skill` (um .zip com `SKILL.md`) e **não está instalada** como skill
+  do Claude Code — foi lida direto do arquivo. O que ela estabelece, verificado por Flávio em
+  25/08: **o texto de instruções do portal está errado sobre o formato do manifesto**. O `.md` daqui
+  usava exatamente o formato errado (` ```mysql name=X connector=Y ` na linha da cerca, sem
+  frontmatter). Convertido: frontmatter YAML (`title`/`credentials: shared`/`connectors:`) + corpo
+  YAML por bloco (`name:`, `connector:`, SQL sob `query: |`). **Isto reabilita a decisão de 29/07 que
+  havia sido revertida** — e agora se sabe por quê ela falhou: só a frontmatter foi movida, com o
+  resto do arquivo ainda em formato de cerca. As duas peças andam juntas. `credentials: shared` ficou
+  nos **dois** lugares (frontmatter + blocos `rest`), porque as duas dizem `shared` e nenhuma das
+  leituras possíveis cai em chave por usuário — que foi o defeito observado ao removê-la do bloco.
+  **Bug latente achado no caminho:** com o corpo do bloco sendo YAML, `{ list_ids[]: [...] }` **não
+  parseia** (`[`/`]`/`,` são indicadores reservados em mapa de fluxo — `ParserError` confirmado com
+  pyyaml); as chaves foram para entre aspas. No `.html`, os dois itens do padrão de dashboard da
+  skill que faltavam: **`prefers-color-scheme`** (abria fixo no claro — flash branco a cada carga em
+  quem usa escuro, e sem `localStorage` no sandbox não há como lembrar; o clique no botão passa a
+  vencer o sistema pela sessão) e **busca por texto** no quadro (casa título/status/lista, sem acento
+  e sem caixa, AND entre termos, `Esc` limpa; cumulativa com o filtro de status, e o rodapé diz
+  **qual** dos dois está escondendo tarefa). Harness: **132 → 180 asserções**, 0 falhas — inclui uma
+  seção nova que **afere o formato do próprio `.md`** e o contrato de nomes `.md`↔`.html`, para o
+  formato não ser revertido uma terceira vez. `run_manifest.py` passou a parsear o formato novo (e
+  **recusa** o antigo em voz alta). Duas armadilhas consertadas de ofício: o `test_portal.mjs` lia
+  `site/index.html`, que só o `run_manifest.py` sincroniza — **fora da rede da JEM ele testava uma
+  página velha em silêncio** (aconteceu nesta sessão), agora lê a origem e avisa se a prévia
+  divergir; e as regexes novas do manifesto toleram CRLF, porque `core.autocrlf=true` neste repo faz
+  um clone novo vir com CRLF.
+  ⚠ **Duas quebras achadas nesta sessão, causadas pela mudança de pasta, NÃO consertadas** (são
+  decisão dela): ver o topo do §9.
 
 ---
 
 ## 8. Portal version (`portal_jem_marketing_daily.md` / `.html`)
 
-Six datasets: 3 × ` ```mysql connector=magento ` (`mkt_orders`, `mkt_totais`,
+Six datasets (⚠ **formato do manifesto mudou em 26/08** — frontmatter YAML + corpo YAML por bloco;
+os `connector=` citados abaixo viraram `connector:` DENTRO do bloco, ver o log de 26/08 no §7 e a
+seção "⚠ Formato deste arquivo" no próprio `.md`): 3 × ` ```mysql ` (`mkt_orders`, `mkt_totais`,
 `mkt_novos_contatos`) + 3 × ` ```rest connector: clickup ` — `clickup_board_pg0`,
 `clickup_board_pg1` (páginas fixas da view, `paginate: false`) e `clickup_concluidas` (consulta de
 equipe). The HTML fetches each by name (`fetch('data/<name>.json')`, which the portal intercepts) and
@@ -674,6 +705,30 @@ hardcoded them and self-failed within hours. Keep that distinction.
 
 ## 9. STATE — read this first next session
 
+### 🔴 A MUDANÇA DE PASTA QUEBROU O REFRESH (achado em 26/08/2026, NÃO consertado)
+
+O projeto **saiu** de `C:\Claude\nsaw-dash-migration\JEM Marketing Daily Report` e agora vive em
+`C:\Claude\Projects\JEM Marketing Daily Report` (repo git novo, remoto
+`github.com/maynaraamaral-bit/mkt-daily-report`, 1 commit). `C:\Claude` hoje tem só `Projects` e
+`Skills`. Duas coisas ficaram para trás, ambas **medidas**, não deduzidas:
+
+1. **A tarefa agendada ainda aponta para a pasta antiga.** `Get-ScheduledTask "JEM Marketing Daily
+   Report"` devolve `Execute = C:\Claude\nsaw-dash-migration\...\refresh_scheduled.cmd`, que não
+   existe mais. `LastTaskResult = 2147942667` (**0x8007010B, "nome de diretório inválido"**) na
+   execução de 26/08 18:40 — ou seja, o job **não chega nem a rodar**, e a falha não é a de rede das
+   22:00. Conserto = re-registrar a tarefa apontando para o caminho novo (o `.cmd` continua igual);
+   é mexer em agendamento do computador dela, então **é decisão dela**.
+2. **O `.env` compartilhado não foi movido.** `C:\Claude\Projects\.env` não existe (procurado em todo
+   `C:\Claude`). Sem ele, `build_data.py` e `portal_test/run_manifest.py` não têm credencial nenhuma
+   — **nem rodando na rede da JEM**. O arquivo nunca esteve no git (correto), então ele só pode vir
+   de onde ela guardou. ⚠ Ela já reportou uma vez esse arquivo como "vazio" quando não estava
+   (editor mostrando buffer mascarado): **se acontecer de novo, avisar para NÃO salvar dessa aba** —
+   um Ctrl+S em buffer vazio apaga as credenciais de Magento/NetSuite/TaxJar/ClickUp.
+
+Enquanto os dois não forem resolvidos, o `data.json` fica parado em **24/08 17:00** e a faixa âmbar
+de dado velho (§9, pane de 26 dias) é o que aparece na tela. A faixa está funcionando — é
+exatamente para isto que ela foi feita.
+
 ### 🔴 A PANE DE 26 DIAS (30/07 → 23/08/2026) — causa raiz achada em 24/08
 
 **Sintoma relatado pela Maynara (24/08):** *"todos os dados de magento estão como arquivo e travados
@@ -761,7 +816,14 @@ chave, procurado em `../.env` e em todo `C:\Claude`).
    pergunta de negócio ("que dia é 'hoje': o de Phoenix ou o do banco?"), não bug óbvio.
    ⚠ Em 28/07 o `NOW()` do banco batia com UTC (registrado no §8) — ou seja, **o fuso do servidor
    parece ter mudado depois disso**. Se for confirmado, vale perguntar à TI.
-2. **`board_test.mjs`: 58 asserções, 53 passam, 5 falham — as 5 são as asserções congeladas de
+2. ⚠ **Reconferido em 26/08: agora são 52 passam / 6 falham** (nada a ver com as edições de 26/08,
+   que só tocaram os arquivos do portal — `git status` confirma). A 6ª é
+   *"título malicioso sai escapado no cartão"*, e **não é falha de escape**: medido com debug, o
+   payload cru (`<script>alert`) **não** aparece no HTML e o cartão injetado simplesmente **não é
+   renderizado** (a reconstrução por dia o descarta), então a 1ª metade da conjunção falha sozinha.
+   O `esc()` continua passando no teste unitário. Conserto honesto = injetar a tarefa de um jeito
+   que ela realmente entre no quadro; é asserção dela, não mexi.
+   **`board_test.mjs`: 58 asserções, 53 passam, 5 falham — as 5 são as asserções congeladas de
    27/07, e o mecanismo está CERTO.** (Eram 47; **+11 cobrindo a faixa de dado velho**, incluindo
    o caso real "26 dias parados acende a faixa vermelha". Duas dessas 11 pegaram defeito no
    próprio teste antes de passar: o `El` do stub **não liga `className` a `classList`** como o
@@ -812,6 +874,11 @@ formas e ela **não escolheu ainda**. O que já está apurado (não precisa re-i
 **O que precisa ser publicado no portal** (mudou hoje, dos dois lados): **`.md` E `.html`**. O `.md`
 mudou de verdade (3 datasets de ClickUp em vez de 1, + a seção "Preservar o log do dia anterior").
 
+🔴 **Atualização 26/08: os dois arquivos mudaram DE NOVO e nenhum foi publicado ainda.** O `.md` está
+no **formato verificado** (frontmatter + corpo YAML — o formato antigo, que estava no ar, é o que
+**não roda**), e o `.html` ganhou busca no quadro + tema do sistema. Se a versão publicada hoje é a
+antiga, **republicar os dois é o que faz o dashboard funcionar de fato**, não um refinamento.
+
 **O que está rodando sozinho:** a tarefa agendada das 22:00 chama o `build_data.py`, que desde hoje
 também grava `board_baseline/board-AAAA-MM-DD.json`. Amanhã deve existir o `board-2026-07-29.json`
 além do `board-2026-07-28.json` gerado hoje à mão — **conferir isso é a checagem de 30 segundos** que
@@ -825,7 +892,7 @@ cd site && python -m http.server 8790     # abrir http://127.0.0.1:8790/index.ht
 ```
 
 **Verificação (rodar antes e depois de qualquer mexida):** `node board_test.mjs` (local, 47) ·
-`cd portal_test && node test_portal.mjs` (portal, 132). Ambos verdes no fim do dia.
+`cd portal_test && node test_portal.mjs` (portal, **180** desde 26/08 — lê o `.html` de origem, não a cópia em `site/`, e afere o formato do `.md`). O do portal fica verde sem rede; o local tem 6 falhas conhecidas e explicadas (asserções congeladas, ver adiante).
 
 **Fora do escopo até alguém pedir:** GA4 (Nº de acessos / Taxa de conversão) e unificar a paleta clara
 do local com o papel quente do portal.
